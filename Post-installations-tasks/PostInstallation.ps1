@@ -1,5 +1,12 @@
 # EVERYTHING IN THIS SCRIPT IS WRITTEN BASED ON PREVIOUS SCRIPTS WRITTEN BY ME AND LOOS POWERSHELL COMMANDS FROM MY SYSTEM DOCUMENTATION FROM NWB AND TI
 
+
+# TODO: REFACTOR CODE: SPLITS THINS MORE IN THERE OWN SCOPES SRP!
+# TODO: TEMP BACKUP REGISTRY BEFORE CHANGING IT
+# TODO: ADD TRANSACTIONS => TO MAKE ROLLBACK POSSIBLE ON FAILURE
+
+
+
 # ~ GLOBAL VARIABLES
 $interfaceAlias = "Ethernet0";
 $connectionUrl = "https://www.howest.be"
@@ -63,10 +70,10 @@ function Show-InternetIsReachable
 {
     try {
         Invoke-WebRequest -Uri $connectionUrl -UseBasicParsing -ErrorAction Stop | Out-Null
-        Write-Output "Internet access is available."
+        Write-Host "Internet access is available."
     }
     catch {
-        Write-Output "Internet access is not available."
+        Write-Host "Internet access is not available."
     }
 }
 
@@ -108,17 +115,78 @@ function Update-TimeZoneToBrussels
     $currentTimeZone =  (Get-TimeZone).Id
     
     if ($currentTimeZone -ne $desiredTimeZone) {
-        Write-Output "Changing timezone to Brussels..."
+        Write-Host "Changing timezone to Brussels..."
         try {
             Set-TimeZone -Id $desiredTimeZone -ErrorAction Stop
-            Write-Output "Timezone changed to Brussels."
+            Write-Host "Timezone changed to Brussels."
         }
         catch {
             Write-Error "Error changing timezone to Brussels: $_"
         }
     }
     else {
-        Write-Output "Timezone is already set to Brussels."
+        Write-Host "Timezone is already set to Brussels."
+    }
+}
+
+# ~ DISABLE IE ENHANCED SECURITY (on Desktop experience)
+function Show-IEEnhancedSecurityMenu
+{
+    if(!Show-IsServerCore)
+    {
+        Clear-Host
+        Write-Host "========== Remote Settings =========="
+        Write-Host "1. Disable for Admins"
+        Write-Host "2. Disable for Users"
+        Write-Host "3. Disable for everyone"
+        $choice = Read-Host "Please make a selection: "
+    
+        switch ($choice) 
+        {
+            '1' 
+            {
+                try {
+                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
+                }
+                catch {
+                    Write-Error "Could not disable IEES for administrators: $_"
+                } 
+                 
+            }
+            '2' 
+            { 
+                try {
+                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
+                }
+                catch {
+                    Write-Error "Could not disable IEES for users: $_"
+                }
+                 
+            }
+            '3' 
+            {
+                try {
+                    # DISABLE FOR ADMINS
+                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
+    
+                    # DISABLE FOR USER
+                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
+                }
+                catch {
+                    Write-Error "Could not disable IEES for everyone: $_"
+                }
+                
+            }
+            '4' { return }
+            default { Show-IEEnhancedSecurityMenu }
+        }
+        pause
+        Show-IEEnhancedSecurityMenu
+    }
+    else 
+    {
+        Write-Host "IE Enhanced Security is not pressent on Core servers. Ignoring request."
+        return
     }
 }
 
@@ -227,4 +295,69 @@ function Show-RemoteDesktopMenu
     }
     pause
     Show-RemoteSettingsMenu
+}
+
+# ~ DISABLE IE ENHANCED SECURITY (on Desktop experience)
+function Show-IEEnhancedSecurityMenu
+{
+    if(!(Show-IsServerCore))
+    {
+        Clear-Host
+        Write-Host "========== Remote Settings =========="
+        Write-Host "1. Disable for Admins"
+        Write-Host "2. Disable for Users"
+        Write-Host "3. Disable for everyone"
+        $choice = Read-Host "Please make a selection: "
+    
+        switch ($choice) 
+        {
+            '1' 
+            {
+                try {
+                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
+                    Write-Host "Disabled IE Enhanced Security for Administrators"
+                }
+                catch {
+                    Write-Error "Could not disable IE Enhanced Security for administrators: $_"
+                } 
+                 
+            }
+            '2' 
+            { 
+                try {
+                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
+                    Write-Host "Disabled IE Enhanced Security for Users"
+                }
+                catch {
+                    Write-Error "Could not disable IE Enhanced Security for users: $_"
+                }
+                 
+            }
+            '3' 
+            {
+                try {
+                    # DISABLE FOR ADMINS
+                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
+    
+                    # DISABLE FOR USER
+                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
+
+                    Write-Host "Disabled IE Enhanced Security for Everyone"
+                }
+                catch {
+                    Write-Error "Could not disable IE Enhanced Security for everyone: $_"
+                }
+                
+            }
+            '4' { return }
+            default { Show-IEEnhancedSecurityMenu }
+        }
+        pause
+        Show-IEEnhancedSecurityMenu
+    }
+    else 
+    {
+        Write-Host "IE Enhanced Security is not pressent on Core servers. Ignoring request."
+        return
+    }
 }
