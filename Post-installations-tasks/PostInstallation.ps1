@@ -101,10 +101,13 @@ function Set-StaticIp
     {
         Get-NetIPAddress -InterfaceAlias $interfaceAlias | Remove-NetIPAddress  -Confirm:$false # Remove previous IP settings 
     }
+    # Related commands inside transaction I one fails rollback - prevents loosing internet config
+    Start-Transaction
     Get-NetIPInterface -InterfaceAlias $interfaceAlias | Remove-NetRoute -Confirm:$false # Remove previous default gateway
     if(!(Show-StaticIpSet)) { Set-NetIPInterface -InterfaceAlias $interfaceAlias -AddressFamily IPv4 -Dhcp Disabled } # IF DHCP is enabled disable
     New-NetIPAddress -InterfaceAlias $interfaceAlias -IPAddress $ipAddress  -PrefixLength $prefix -DefaultGateway $defaultGateway -AddressFamily IPv4
-    Restart-NetAdapter -InterfaceAlias $InterfaceAlias # restart adapter 
+    Restart-NetAdapter -InterfaceAlias $InterfaceAlias # restart adapter
+    Complete-Transaction 
 
 }
 
@@ -129,7 +132,41 @@ function Update-TimeZoneToBrussels
     }
 }
 
+# ~ UDPATE PREFERENCES ON DESKTOP EXPERIENCE
+function Update-Preferences
+{
+    if(!(Show-IsServerCore))
+    {
+        Write-Host "Desktop Experience detected Settings preferences..."
+        Start-Transaction
+        try
+        {
+            # Display FILE EXTENSIONS
+            Set-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name "HideFileExt" -Value 0
 
+            Write-Host "Enabled File extensions..."
+
+            # Display HIDDEN FILES
+            Set-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced -Name "Hidden" -Value 1
+
+            Write-Host "Enabled show hidden files..."
+
+            # ENABLE NUMLOCK ON BOOT
+            Set-ItemProperty -Path 'Registry::HKEY_USERS\.DEFAULT\Control Panel\Keyboard' -Name 'InitialKeyboardIndicators' -Value 2
+            Write-Host "Enabled numlock on boot..."
+
+            # SET KEYBOARD TO QWERTY (en-US)
+            Set-WinUserLanguageList -LanguageList en-US -Force
+            Write-Host "Updated keyboard to Qwerty(US)..."
+        }
+        catch
+        {
+            Write-Error "Error could not set preferences! restoring to previous settings: $_";
+            Undo-Transaction
+        }
+        Complete-Transaction
+    }
+}
 
 # ~ MENUS =========================================================================================================================================================================================================================================================
 # ~ CHANGE NETWORK CONFIG
@@ -179,7 +216,6 @@ function Show-NetworkConfigMenu
                 if([string]$overwriteConfig.ToLower.Equals("y"))
                 {
                     Set-StaticIp -overWrite $true
- 
                 }   
             }
             Write-Host "IP configuration succesfully set..."
@@ -220,11 +256,20 @@ function Show-RemoteDesktopMenu
     {
         '1' 
         { 
-            Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-Name "fDenyTSConnections" -Value 0 
-            Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name “UserAuthentication” -Value 1 
-            Write-Host "Enabled Remote Desktop..."
-            Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-            Write-Host "Allowed RDP trough firewall..."
+            Start-Transaction
+            try {
+                Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-Name "fDenyTSConnections" -Value 0 
+                Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name “UserAuthentication” -Value 1 
+                Write-Host "Enabled Remote Desktop..."
+                Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+                Write-Host "Allowed RDP trough firewall..."
+            }
+            catch {
+                Write-Error "Could not enable RDP at this moment: $_"
+                Undo-Transaction
+            }
+            Complete-Transaction
+            
         }
         '2' 
         { 
