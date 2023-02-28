@@ -1,3 +1,5 @@
+# EVERYTHING IN THIS SCRIPT IS WRITTEN BASED ON PREVIOUS SCRIPTS WRITTEN BY ME AND LOOS POWERSHELL COMMANDS FROM MY SYSTEM DOCUMENTATION FROM NWB AND TI
+
 # ~ GLOBAL VARIABLES
 $interfaceAlias = "Ethernet0";
 $connectionUrl = "https://www.howest.be"
@@ -97,6 +99,27 @@ function Set-StaticIp
     New-NetIPAddress -InterfaceAlias $interfaceAlias -IPAddress $ipAddress  -PrefixLength $prefix -DefaultGateway $defaultGateway -AddressFamily IPv4
     Restart-NetAdapter -InterfaceAlias $InterfaceAlias # restart adapter 
 
+}
+
+# ~ CHANGE TIMEZONE TO BRUSSELS
+function Update-TimeZoneToBrussels
+{
+    $desiredTimeZone = "Romance Standard Time"
+    $currentTimeZone =  (Get-TimeZone).Id
+    
+    if ($currentTimeZone -ne $desiredTimeZone) {
+        Write-Output "Changing timezone to Brussels..."
+        try {
+            Set-TimeZone -Id $desiredTimeZone -ErrorAction Stop
+            Write-Output "Timezone changed to Brussels."
+        }
+        catch {
+            Write-Error "Error changing timezone to Brussels: $_"
+        }
+    }
+    else {
+        Write-Output "Timezone is already set to Brussels."
+    }
 }
 
 # ~ MENUS =========================================================================================================================================================================================================================================================
