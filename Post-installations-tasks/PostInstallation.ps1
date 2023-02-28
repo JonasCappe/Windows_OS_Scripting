@@ -129,66 +129,7 @@ function Update-TimeZoneToBrussels
     }
 }
 
-# ~ DISABLE IE ENHANCED SECURITY (on Desktop experience)
-function Show-IEEnhancedSecurityMenu
-{
-    if(!Show-IsServerCore)
-    {
-        Clear-Host
-        Write-Host "========== Remote Settings =========="
-        Write-Host "1. Disable for Admins"
-        Write-Host "2. Disable for Users"
-        Write-Host "3. Disable for everyone"
-        $choice = Read-Host "Please make a selection: "
-    
-        switch ($choice) 
-        {
-            '1' 
-            {
-                try {
-                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
-                }
-                catch {
-                    Write-Error "Could not disable IEES for administrators: $_"
-                } 
-                 
-            }
-            '2' 
-            { 
-                try {
-                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
-                }
-                catch {
-                    Write-Error "Could not disable IEES for users: $_"
-                }
-                 
-            }
-            '3' 
-            {
-                try {
-                    # DISABLE FOR ADMINS
-                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
-    
-                    # DISABLE FOR USER
-                    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
-                }
-                catch {
-                    Write-Error "Could not disable IEES for everyone: $_"
-                }
-                
-            }
-            '4' { return }
-            default { Show-IEEnhancedSecurityMenu }
-        }
-        pause
-        Show-IEEnhancedSecurityMenu
-    }
-    else 
-    {
-        Write-Host "IE Enhanced Security is not pressent on Core servers. Ignoring request."
-        return
-    }
-}
+
 
 # ~ MENUS =========================================================================================================================================================================================================================================================
 # ~ CHANGE NETWORK CONFIG
