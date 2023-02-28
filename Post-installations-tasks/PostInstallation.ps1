@@ -118,10 +118,24 @@ function Show-NetworkConfigMenu
         '0'
         { 
             Set-NetIPInterface -InterfaceAlias $interfaceAlias -Dhcp Enabled # EnableDHCP
-            if(Show-DnsServersSet) { Set-DnsClientServerAddress -InterfaceAlias $interfaceAlias -ResetServerAddresses } # Clear DNS settings
+            Write-Host "Enabled DHCP"
+            if(Show-DnsServersSet) 
+            {
+                Write-Host "DNS server settings detected..."
+                Set-DnsClientServerAddress -InterfaceAlias $interfaceAlias -ResetServerAddresses
+                Write-Host "Removed previous DNS servers..." 
+            } # Clear DNS settings
             Clear-DnsClientCache # Clear DNS cache
-            if(Show-DefaultGatewaySet) { Set-NetIPInterface -InterfaceAlias Ethernet0 | Remove-NetRoute -Confirm:$false } # Remove default gateway
-            Restart-NetAdapter -InterfaceAlias $InterfaceAlias # restart adapter 
+            Write-Host "DNS cash cleared..."
+            if(Show-DefaultGatewaySet) 
+            { 
+                Set-NetIPInterface -InterfaceAlias Ethernet0 | Remove-NetRoute -Confirm:$false 
+                Write-Host "Removed prevous default gateway"
+            } # Remove default gateway
+
+            Write-Host "The network interface will now be restarted to retrieve a new lease"
+            Restart-NetAdapter -InterfaceAlias $InterfaceAlias # restart adapter
+            
         }
         '1' 
         { 
@@ -136,13 +150,16 @@ function Show-NetworkConfigMenu
  
                 }   
             }
+            Write-Host "IP configuration succesfully set..."
         }
         '2' 
         { 
             $preferedDNS = Read-Host "Enter prefered DNS server: "
             $alternateDNS = Read-Host "Enter Alternate DNS server: "
             Clear-DnsClientCache
+            Write-Host "DNS cash cleared..."
             Set-DnsClientServerAddress -InterfaceAlias $interfaceAlias -ServerAddresses ($preferedDNS,$alternateDNS) 
+            Write-Host "Updated DNS servers..." 
         }
         '3'
         {
@@ -155,4 +172,36 @@ function Show-NetworkConfigMenu
     }
     pause
     Show-NetworkConfigMenu
+}
+
+# ~ ENABLE REMOTE DESKTOP
+function Show-RemoteDesktopMenu 
+{
+    Clear-Host
+    Write-Host "========== Remote Desktop =========="
+    Write-Host "1. Enable Remote Desktop"
+    Write-Host "2. Allow Non-Admins to Remote In"
+    Write-Host "3. Return to Main Menu"
+
+    $choice = Read-Host "Please make a selection: "
+    switch ($choice) 
+    {
+        '1' 
+        { 
+            Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-Name "fDenyTSConnections" -Value 0 
+            Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name “UserAuthentication” -Value 1 
+            Write-Host "Enabled Remote Desktop..."
+            Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+            Write-Host "Allowed RDP trough firewall..."
+        }
+        '2' 
+        { 
+            $user = Read-Host "Enter User of user to allow to remote in: "
+            Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user 
+        }
+        '3' { return }
+        default { Display-RemoteSettingsMenu }
+    }
+    pause
+    Show-RemoteSettingsMenu
 }
