@@ -8,8 +8,8 @@
 
 
 # ~ GLOBAL VARIABLES
-$interfaceAlias = "Ethernet0";
-$connectionUrl = "https://www.howest.be"
+$interfaceAlias = "Ethernet0"; # Interface alias of the network adapter to configure
+$connectionUrl = "https://www.howest.be" # URL to test internet connectivity
 
 # CHECK IF SCRIPT IS RUNNED WITH ELEVATED PERMISSIONS IF NOT RESTART WITH ELEVATED PERMISSUONS
 $admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -23,9 +23,9 @@ if ($admin -eq $false)
 # CHECK OF SERVER IS CORE VERSION
 function Show-IsServerCore
 {
-    $osServer = (Get-ComputerInfo | Select-Object OsServerLevel)
+    $osServer = (Get-ComputerInfo | Select-Object OsServerLevel) # Get OS Server Level
 
-    if($OsServer -eq "ServerCore")
+    if($OsServer -eq "ServerCore") # Check if OS Server Level is ServerCore
     {
         return $true;
     }
@@ -35,8 +35,10 @@ function Show-IsServerCore
 # CHECK IF STATIC IP IS SET (DHCP IS Disabled = Static IP)
 function Show-StaticIpSet
 {
-    $dhcpEnabled=(Get-NetIPInterface -ifAlias $interfaceAlias | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.Dhcp});
-    if($dhcpEnabled  -like "D*")
+    $dhcpEnabled=(Get-NetIPInterface -ifAlias $interfaceAlias | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.Dhcp}); # Get DHCP status
+    $staticIpSet=(Get-NetIPAddress -InterfaceAlias $interfaceAlias | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.IPAddress}); # Get IP Address
+    
+    if($dhcpEnabled  -like "D*" && $staticIpSet) # Check if DHCP is disabled 
     {
         return $true;
     }
@@ -46,9 +48,9 @@ function Show-StaticIpSet
 # CHECK DNS SERVER(s) IS SET
 function Show-DnsServersSet
 {
-    $dnsServersSet=@(Get-DnsClientServerAddress -AddressFamily IPv4 -InterfaceAlias $interfaceAlias);
+    $dnsServersSet=@(Get-DnsClientServerAddress -AddressFamily IPv4 -InterfaceAlias $interfaceAlias); # Get DNS Servers
 
-    if($null -ne ($dnsServersSet | ForEach-Object {$_.ServerAddresses}))
+    if($null -ne ($dnsServersSet | ForEach-Object {$_.ServerAddresses})) # Check if DNS Servers ar not null
     {
         return $true;
     }
@@ -93,14 +95,16 @@ function Set-StaticIp
 {
     param([bool]$overWrite = $false)
 
+    # Get user input
     $ipAddress = Read-Host "Enter the IP address"
     $prefix = Read-Host "Enter the network prefix"
     $defaultGateway = Read-Host "Enter the default gateway"
 
-    if($overWrite) # On existing first clear config
+    if($overWrite) # If overwrite is true clear previous settings
     {
         Get-NetIPAddress -InterfaceAlias $interfaceAlias | Remove-NetIPAddress  -Confirm:$false # Remove previous IP settings 
     }
+
     # Related commands inside transaction I one fails rollback - prevents loosing internet config
     Start-Transaction
     Get-NetIPInterface -InterfaceAlias $interfaceAlias | Remove-NetRoute -Confirm:$false # Remove previous default gateway
@@ -108,18 +112,17 @@ function Set-StaticIp
     New-NetIPAddress -InterfaceAlias $interfaceAlias -IPAddress $ipAddress  -PrefixLength $prefix -DefaultGateway $defaultGateway -AddressFamily IPv4
     Restart-NetAdapter -InterfaceAlias $InterfaceAlias # restart adapter
     Complete-Transaction 
-
 }
 
 # ~ CHANGE TIMEZONE TO BRUSSELS
 function Update-TimeZoneToBrussels
 {
-    $desiredTimeZone = "Romance Standard Time"
-    $currentTimeZone =  (Get-TimeZone).Id
-    
+    $desiredTimeZone = "Romance Standard Time" # Brussels timezone
+    $currentTimeZone =  (Get-TimeZone).Id # Get current timezone
+    # Check if current timezone is not Brussels
     if ($currentTimeZone -ne $desiredTimeZone) {
         Write-Host "Changing timezone to Brussels..."
-        try {
+        try { # Change timezone to Brussels 
             Set-TimeZone -Id $desiredTimeZone -ErrorAction Stop
             Write-Host "Timezone changed to Brussels."
         }
@@ -135,7 +138,7 @@ function Update-TimeZoneToBrussels
 # ~ UDPATE PREFERENCES ON DESKTOP EXPERIENCE
 function Update-Preferences
 {
-    if(!(Show-IsServerCore))
+    if(!(Show-IsServerCore)) # Check if server is not core version - not applicable for core version
     {
         Write-Host "Desktop Experience detected Settings preferences..."
         Start-Transaction
@@ -191,47 +194,50 @@ function Show-NetworkConfigMenu
             if(Show-DnsServersSet) 
             {
                 Write-Host "DNS server settings detected..."
-                Set-DnsClientServerAddress -InterfaceAlias $interfaceAlias -ResetServerAddresses
+                Set-DnsClientServerAddress -InterfaceAlias $interfaceAlias -ResetServerAddresses # Clear DNS settings
                 Write-Host "Removed previous DNS servers..." 
             } # Clear DNS settings
             Clear-DnsClientCache # Clear DNS cache
             Write-Host "DNS cash cleared..."
-            if(Show-DefaultGatewaySet) 
+            if(Show-DefaultGatewaySet) # Check if default gateway is set, if so remove it
             { 
                 Set-NetIPInterface -InterfaceAlias Ethernet0 | Remove-NetRoute -Confirm:$false 
                 Write-Host "Removed prevous default gateway"
             } # Remove default gateway
 
             Write-Host "The network interface will now be restarted to retrieve a new lease"
-            Restart-NetAdapter -InterfaceAlias $InterfaceAlias # restart adapter
+            Restart-NetAdapter -InterfaceAlias $InterfaceAlias # restart adapter to retrieve new lease
             
         }
         '1' 
         { 
+            # Check if static IP is already set, if so ask user if he wants to overwrite previous settings
             if(!(Show-StaticIpSet)) { Set-StaticIp }
             else 
             { 
                 Write-Host "Static configuration was alraedy set!"
                 $overwriteConfig = Read-Host "Do you wish to overwrite the previous configuration?"
-                if([string]$overwriteConfig.ToLower.Equals("y"))
+                if([string]$overwriteConfig.ToLower.Equals("y")) # If user wants to overwrite previous settings
                 {
-                    Set-StaticIp -overWrite $true
+                    Set-StaticIp -overWrite $true # Set static IP with overwrite option
                 }   
             }
             Write-Host "IP configuration succesfully set..."
         }
         '2' 
         { 
-            $preferedDNS = Read-Host "Enter prefered DNS server: "
-            $alternateDNS = Read-Host "Enter Alternate DNS server: "
-            Clear-DnsClientCache
+            # Ask user for DNS servers
+            $preferedDNS = Read-Host "Enter prefered DNS server"
+            $alternateDNS = Read-Host "Enter Alternate DNS server"
+
+            Clear-DnsClientCache # Clear DNS cache
             Write-Host "DNS cash cleared..."
-            Set-DnsClientServerAddress -InterfaceAlias $interfaceAlias -ServerAddresses ($preferedDNS,$alternateDNS) 
+            Set-DnsClientServerAddress -InterfaceAlias $interfaceAlias -ServerAddresses ($preferedDNS,$alternateDNS) # Set DNS servers
             Write-Host "Updated DNS servers..." 
         }
         '3'
         {
-            Get-NetAdapterBinding -InterfaceAlias $interfaceAlias | Set-NetAdapterBinding -Enabled:$false -ComponentID ms_tcpip6
+            Get-NetAdapterBinding -InterfaceAlias $interfaceAlias | Set-NetAdapterBinding -Enabled:$false -ComponentID ms_tcpip6 # Disable IPv6 protocol for interface
             Write-Host "Disabled IPv6 protocol for interface $InterfaceAlias";
         }
         '4' { Show-InternetIsReachable }
@@ -256,8 +262,9 @@ function Show-RemoteDesktopMenu
     {
         '1' 
         { 
-            Start-Transaction
+            Start-Transaction # Start transaction to undo changes if something goes wrong
             try {
+                # Enable RDP and allow RDP through firewall
                 Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-Name "fDenyTSConnections" -Value 0 
                 Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name “UserAuthentication” -Value 1 
                 Write-Host "Enabled Remote Desktop..."
@@ -274,7 +281,7 @@ function Show-RemoteDesktopMenu
         '2' 
         { 
             $user = Read-Host "Enter User of user to allow to remote in: "
-            Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user 
+            Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user # Add user to remote desktop users group
         }
         '3' { return }
         default { Display-RemoteSettingsMenu }
@@ -301,6 +308,7 @@ function Show-IEEnhancedSecurityMenu
             '1' 
             {
                 try {
+                    # Disable IE Enhanced Security for Administrators
                     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
                     Write-Host "Disabled IE Enhanced Security for Administrators"
                 }
@@ -312,6 +320,7 @@ function Show-IEEnhancedSecurityMenu
             '2' 
             { 
                 try {
+                    # Disable IE Enhanced Security for Users
                     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
                     Write-Host "Disabled IE Enhanced Security for Users"
                 }
@@ -323,10 +332,10 @@ function Show-IEEnhancedSecurityMenu
             '3' 
             {
                 try {
-                    # DISABLE FOR ADMINS
+                    # Disable IE Enhanced Security for Administrators
                     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
     
-                    # DISABLE FOR USER
+                    # Disable IE Enhanced Security for Users
                     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
 
                     Write-Host "Disabled IE Enhanced Security for Everyone"
@@ -349,7 +358,7 @@ function Show-IEEnhancedSecurityMenu
     }
 }
 
-function Show-MainMenu {
+function Show-MainMenu { # Main menu - shows all options
 
     Clear-Host
     Write-Host "============ Post-Installation Config ============ "
