@@ -1,4 +1,4 @@
-# EVERYTHING IN THIS SCRIPT IS WRITTEN BASED ON PREVIOUS SCRIPTS WRITTEN BY ME AND LOOS POWERSHELL COMMANDS FROM MY SYSTEM DOCUMENTATION FROM NWB AND TI
+# EVERYTHING IN THIS SCRIPT IS WRITTEN BASED ON PREVIOUS SCRIPTS WRITTEN BY ME AND LOOSE POWERSHELL COMMANDS FROM MY SYSTEM DOCUMENTATION FROM NWB AND TI
 
 
 # TODO: REFACTOR CODE: SPLITS THINS MORE IN THERE OWN SCOPES SRP!
@@ -79,7 +79,7 @@ function Show-InternetIsReachable
 
 # ~ ACTIONS ======================================================================================================================================================================================================================================================
 # CHANGE COMPUTER NAME (with user input)
-function Update-ComputerNamne
+function Update-ComputerName
 {
     Clear-Host
     $newName = Read-Host "Enter new computer name";
@@ -280,7 +280,7 @@ function Show-RemoteDesktopMenu
         default { Display-RemoteSettingsMenu }
     }
     pause
-    Show-RemoteSettingsMenu
+    Show-RemoteDesktopMenu 
 }
 
 # ~ DISABLE IE ENHANCED SECURITY (on Desktop experience)
@@ -293,6 +293,7 @@ function Show-IEEnhancedSecurityMenu
         Write-Host "1. Disable for Admins"
         Write-Host "2. Disable for Users"
         Write-Host "3. Disable for everyone"
+        Write-Host "4. Return to Main Menu"
         $choice = Read-Host "Please make a selection: "
     
         switch ($choice) 
@@ -347,3 +348,34 @@ function Show-IEEnhancedSecurityMenu
         return
     }
 }
+
+function Show-MainMenu {
+
+    Clear-Host
+    Write-Host "============ Post-Installation Config ============ "
+    Write-Host "1. Change Computer Name"
+    Write-Host "2. Network Configuration"
+    Write-Host "3. Remote Settings"
+    Write-Host "4. Change Time-Zone to Europe/Brussels"
+    Write-Host "5. Disable Internet Explorer Enhanced Security Configuration"
+    Write-Host "6. Preferences"
+    Write-Host "7. Exit"
+    Write-Host "8. Restart Server"
+
+    $choice = Read-Host "Make a selection: "
+
+    switch ($choice) 
+    {
+        '1' { Update-ComputerName }
+        '2' { Show-NetworkConfigMenu }
+        '3' { Show-RemoteDesktopMenu  }
+        '4' { Update-TimeZoneToBrussels }
+        '5' { Show-IEEnhancedSecurityMenu }
+        '6' { Update-Preferences }
+        '7' { return }
+        '8' { Restart-Computer }
+        default { Show-MainMenu }
+    }
+}
+
+Show-MainMenu
