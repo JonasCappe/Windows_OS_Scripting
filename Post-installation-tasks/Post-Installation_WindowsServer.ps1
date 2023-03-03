@@ -4,7 +4,7 @@
 
 # ~ GLOBAL VARIABLES
 $interfaceAlias = "Ethernet0"; # Interface alias of the network adapter to configure
-$connectionUrl = "https://www.howest.be" # URL to test internet connectivity
+$connectionUrl = "https://www.howest.be"; # URL to test internet connectivity
 
 # CHECK IF SCRIPT IS RUNNED WITH ELEVATED PERMISSIONS IF NOT RESTART WITH ELEVATED PERMISSUONS
 $admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -18,7 +18,7 @@ if ($admin -eq $false)
 # CHECK OF SERVER IS CORE VERSION
 function Show-IsServerCore
 {
-    $osServer = (Get-ComputerInfo | Select-Object OsServerLevel) # Get OS Server Level
+    $osServer = (Get-ComputerInfo | Select-Object OsServerLevel); # Get OS Server Level
 
     if($OsServer -eq "ServerCore") # Check if OS Server Level is ServerCore
     {
@@ -66,7 +66,7 @@ function Show-DefaultGatewaySet
 function Show-InternetIsReachable
 {
     try {
-        Invoke-WebRequest -Uri $connectionUrl -UseBasicParsing -ErrorAction Stop | Out-Null
+        Invoke-WebRequest -Uri $connectionUrl -UseBasicParsing -ErrorAction Stop | Out-Null;
         Write-Host "Internet access is available."
     }
     catch {
@@ -78,7 +78,7 @@ function Show-InternetIsReachable
 # CHANGE COMPUTER NAME (with user input)
 function Update-ComputerName
 {
-    Clear-Host
+    Clear-Host;
     $newName = Read-Host "Enter new computer name";
 
     # Set the hostname (without restart option)
@@ -91,21 +91,21 @@ function Set-StaticIp
     param([bool]$overWrite = $false)
 
     # Get user input
-    $ipAddress = Read-Host "Enter the IP address"
-    $prefix = Read-Host "Enter the network prefix"
-    $defaultGateway = Read-Host "Enter the default gateway"
+    $ipAddress = Read-Host "Enter the IP address";
+    $prefix = Read-Host "Enter the network prefix";
+    $defaultGateway = Read-Host "Enter the default gateway";
 
     if($overWrite) # If overwrite is true clear previous settings
     {
-        Get-NetIPAddress -InterfaceAlias $interfaceAlias | Remove-NetIPAddress  -Confirm:$false # Remove previous IP settings 
+        Get-NetIPAddress -InterfaceAlias $interfaceAlias | Remove-NetIPAddress  -Confirm:$false; # Remove previous IP settings 
     }
 
     # Related commands inside transaction I one fails rollback - prevents loosing internet config
     Start-Transaction
     Get-NetIPInterface -InterfaceAlias $interfaceAlias | Remove-NetRoute -Confirm:$false # Remove previous default gateway
-    if(!(Show-StaticIpSet)) { Set-NetIPInterface -InterfaceAlias $interfaceAlias -AddressFamily IPv4 -Dhcp Disabled } # IF DHCP is enabled disable
-    New-NetIPAddress -InterfaceAlias $interfaceAlias -IPAddress $ipAddress  -PrefixLength $prefix -DefaultGateway $defaultGateway -AddressFamily IPv4
-    Restart-NetAdapter -InterfaceAlias $InterfaceAlias # restart adapter
+    if(!(Show-StaticIpSet)) { Set-NetIPInterface -InterfaceAlias $interfaceAlias -AddressFamily IPv4 -Dhcp Disabled; } # IF DHCP is enabled disable
+    New-NetIPAddress -InterfaceAlias $interfaceAlias -IPAddress $ipAddress  -PrefixLength $prefix -DefaultGateway $defaultGateway -AddressFamily IPv4;
+    Restart-NetAdapter -InterfaceAlias $InterfaceAlias; # restart adapter
     Complete-Transaction 
 }
 
