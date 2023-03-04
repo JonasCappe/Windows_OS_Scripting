@@ -1,3 +1,4 @@
+. ./Network-RelatedFunctions.ps1 # Import the function to get the network part of an IP address
 # CHECK IF SCRIPT IS RUNNED WITH ELEVATED PERMISSIONS IF NOT RESTART WITH ELEVATED PERMISSUONS
 $admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
@@ -64,7 +65,11 @@ if($currentDnsServers.ServerAddresses -ne $dnsServers)
 }
 
 # TO DO: Create the reverse lookup zone for the subnet and make sure the pointer record of the first domain controller appears in that zone
+$ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet0' -and $_.AddressFamily -eq 'IPv4' } # Get ipconfig of the first network adapter
+$subnet = Out-NetworkIpAddress -IpAddress $ipconfig.IPAddress -PrefixLength $ipconfig.PrefixLength; # Get the network part of the IP address
 
+Add-DnsServerPrimaryZone -Name (Get-ReverseLookupZoneName -InterfaceAlias "Ethernet0" ) -NetworkID $subnet -ReplicationScope "Domain"
+Add-DnsServerResourceRecordPTR -Name "DC1" -PTRDomainName $subnet.Split('/')[0] -ZoneName "10.0.0.x.in-addr.arpa"
 # TO DO: Rename the 'default-first-site-name' to a meaningful name and add your subnet to it
 
 # TO DO: Configure as DHCP server - Check if nessary roles are installed
@@ -75,3 +80,25 @@ if($currentDnsServers.ServerAddresses -ne $dnsServers)
 # TO DO: Create IPv4 scope for the subnet (DHCP scope option)
 
 # TO DO: Create the correct DHCP server options
+
+
+
+# ~ Functions ============================================================================================================
+function Out-ReversedString # Function to reverse a string
+{
+    param(
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$string
+    )
+
+   <#
+    1. Match each character in the string, right to left
+    2. Get the value of each match
+    3. Join the values together into a string
+   #>
+    return (([regex]::Matches($string,'.','RightToLeft') `
+    | ForEach-Object {$_.value}) `
+    -join '');
+    
+}
