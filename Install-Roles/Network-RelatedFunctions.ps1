@@ -35,7 +35,7 @@ function Out-NetworkIpAddress # Function to get the network part of an IP addres
 # Only created this functions to play arround with network calculations
 function Get-NetworkPrefixLength {
     param(
-        [parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [parameter(Mandatory=$true, ValueFromPipeline=$True)]
         [string]$SubnetMask
     )
 
@@ -64,24 +64,73 @@ function Convert-PrefixToSubnetMask { # Function to convert a prefix length to a
 function Get-ReverseLookupZoneName # Function to get the reverse lookup zone name for an IP address
 {
     param(
-        [parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [parameter(Mandatory=$True, ValueFromPipeline=$True)]
         [string]$InterfaceAlias
     )
 
 
-    $ipAddress = Get-NetIPAddress -InterfaceAlias $InterfaceAlias | Where-Object {$_.AddressFamily -eq "IPv4"}
+    $IpAddress = Get-NetIPAddress -InterfaceAlias $InterfaceAlias | Where-Object {$_.AddressFamily -eq "IPv4"}
     
-    $subnetMask = Convert-PrefixToSubnetMask -PrefixLength $ipAddress.PrefixLength # Convert the prefix length to a subnet mask
-    $octets = $ipAddress.IPAddress.Split(".") # Split the IP address and subnet mask into octets
-    $subnetOctets = $subnetMask.Split(".") # Split the IP address and subnet mask into octets
-    $networkOctets = @() # Initialize the network octets array
+    $SubnetMask = Convert-PrefixToSubnetMask -PrefixLength $IpAddress.PrefixLength # Convert the prefix length to a subnet mask
+    $Octets = $IpAddress.IPAddress.Split(".") # Split the IP address and subnet mask into octets
+    $SubnetOctets = $SubnetMask.Split(".") # Split the IP address and subnet mask into octets
+    $NetworkOctets = @() # Initialize the network octets array
     
-    for ($i = 0; $i -lt $subnetOctets.Length; $i++) {
-        $networkOctets += [int]($octets[$i] -band $subnetOctets[$i]) # bitwise AND the IP address byte with the subnet mask byte
+    for ($i = 0; $i -lt $SubnetOctets.Length; $i++) {
+        $NetworkOctets += [int]($Octets[$i] -band $SubnetOctets[$i]) # bitwise AND the IP address byte with the subnet mask byte
     }
     
-    $networkOctets = $networkOctets[0..($ipAddress.PrefixLength/8 - 1)] # Remove the octets that are not part of the network address, 8 bits per octet minus the 1st octet (which is always 255)
-    [array]::Reverse($networkOctets) # Reverse the array
-    $zoneName = $networkOctets -join "." # Join the octets together with a period and return the result
-    return $zoneName + ".in-addr.arpa" # Add the in-addr.arpa suffix and return the result
+    $NetworkOctets = $NetworkOctets[0..($ipAddress.PrefixLength/8 - 1)] # Remove the octets that are not part of the network address, 8 bits per octet minus the 1st octet (which is always 255)
+    [array]::Reverse($NetworkOctets) # Reverse the array
+    $ZoneName = $NetworkOctets -join "." # Join the octets together with a period and return the result
+    return $ZoneName + ".in-addr.arpa" # Add the in-addr.arpa suffix and return the result
+}
+
+function Get-ComputerFQDN # Function to get the fully qualified domain name of the computer
+{
+    $DNSHostName = (Get-WmiObject win32_computersystem).DNSHostName;
+    $Domain = (Get-WmiObject win32_computersystem).Domain;
+    return "$DNSHostName.$Domain";
+}
+
+function Get-Subnet # Retrieve the subnet of an interface (IP address and prefix length, format: x.x.x.x/x)
+{
+    param(
+        [parameter(Mandatory=$True, ValueFromPipeline=$True)]
+        [string]$InterfaceAlias
+    )
+    $ipAddress = Get-NetIPAddress -InterfaceAlias $InterfaceAlias | Where-Object {$_.AddressFamily -eq "IPv4"};
+    return (Out-NetworkIpAddress -IpAddress $ipAddress.IPAddress -SubnetMask $ipAddress.SubnetMask)/$ipAddress.PrefixLength;
+}
+
+function Get-BroadcastAddress # Retrieve the broadcast address of an interface
+{
+    param(
+        [parameter(Mandatory=$True, ValueFromPipeline=$True)]
+        [string]$InterfaceAlias
+    )
+    $IpAddress = Get-NetIPAddress -InterfaceAlias $InterfaceAlias | Where-Object {$_.AddressFamily -eq "IPv4"};
+    $SubnetMask = Convert-PrefixToSubnetMask -PrefixLength $IpAddress.PrefixLength;
+    $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress.IPAddress -SubnetMask $SubnetMask;
+    return ([IpAddress]$NetworkAddress).IPAddress -bor -bnot ([IpAddress]$SubnetMask).IPAddress;
+}
+
+function Get-FirstAddressRange # Retrieve the first address of the range of usable addresses of an interface
+{
+    param(
+        [parameter(Mandatory=$True, ValueFromPipeline=$True)]
+        [string]$InterfaceAlias
+    )
+    $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress.IPAddress -SubnetMask $SubnetMask; # Retrieve the network address of the interface
+    return ([IpAddress]($NetworkAddress + 1)).IPAddress # Return the first address of the range of usable addresses
+}
+
+function Get-LastAddressRange # Retrieve the last address of the range of usable addresses of an interface
+{
+    param(
+        [parameter(Mandatory=$True, ValueFromPipeline=$True)]
+        [string]$InterfaceAlias
+    )
+    $BroadcastAddress = Get-BroadcastAddress -InterfaceAlias $InterfaceAlias; # Retrieve the broadcast address of the interface
+    return ([IpAddress]($BroadcastAddress - 1)).IPAddress # Return the last address of the range of usable addresses
 }
