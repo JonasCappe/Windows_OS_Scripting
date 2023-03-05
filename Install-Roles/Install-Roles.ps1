@@ -28,7 +28,8 @@ foreach ($Role in $Roles) {
     }
 }
 
-# TO DO: Create the first domain controller in the new forest and new windows domain
+# Create the first domain controller in the new forest and new windows domain
+# Modified from: NWB Script based on generated script wizard
 function InstallFirstDomainController
 {
     $DomainName = Read-Host "Enter the domain name";
@@ -55,33 +56,41 @@ function InstallFirstDomainController
     -Force:$True;
 }
 
-# TO DO: reboot the server and wait for the server to come back online
+# reboot the server and wait for the server to come back online
 Start-Sleep -Seconds 120;
 Write-Host "Server has restarted proceding with script.";
 
-# TO DO: After the reboot, check/correct the local DNS servers (Preferred and Alternate).
-$DnsServers = Read-Host "Enter the DNS servers (comma seperated)";
-$CurrentDnsServers = Get-DnsClientServerAddress -InterfaceIndex (Get-NetAdapter | Where-Object {$_.InterfaceDescription -like "*Ethernet*"}).InterfaceIndex;
-
-if($CurrentDnsServers.ServerAddresses -ne $DnsServers)
+# After the reboot, check/correct the local DNS servers (Preferred and Alternate).
+function Update-DNSServers
 {
-    Set-DnsClientServerAddress -InterfaceIndex (Get-NetAdapter | Where-Object {$_.InterfaceDescription -like "*Ethernet*"}).InterfaceIndex -ServerAddresses ($DnsServers);
+    $DnsServers = Read-Host "Enter the DNS servers (comma seperated)";
+    $CurrentDnsServers = Get-DnsClientServerAddress -InterfaceIndex (Get-NetAdapter | Where-Object {$_.InterfaceDescription -like "*Ethernet*"}).InterfaceIndex;
+
+    if($CurrentDnsServers.ServerAddresses -ne $DnsServers)
+    {
+        Set-DnsClientServerAddress -InterfaceIndex (Get-NetAdapter | Where-Object {$_.InterfaceDescription -like "*Ethernet*"}).InterfaceIndex -ServerAddresses ($DnsServers);
+    }
 }
 
-# TO DO: Create the reverse lookup zone for the subnet and make sure the pointer record of the first domain controller appears in that zone
+
+# Create the reverse lookup zone for the subnet and make sure the pointer record of the first domain controller appears in that zone
 $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet0' -and $_.AddressFamily -eq 'IPv4' } # Get ipconfig of the first network adapter
 $Subnet = Out-NetworkIpAddress -IpAddress $ipconfig.IPAddress -PrefixLength $ipconfig.PrefixLength; # Get the network part of the IP address
 
 Add-DnsServerPrimaryZone -Name (Get-ReverseLookupZoneName -InterfaceAlias "Ethernet0" ) -NetworkID $Subnet -ReplicationScope "Domain" -DynamicUpdate "Secure";
 Add-DnsServerResourceRecordPTR -Name $env:computername -PtrDomainName Get-ComputerFQDN -ZoneName ("" + (Get-ReverseLookupZoneName -InterfaceAlias "Ethernet0") +".")
+
+# Sources: https://learn.microsoft.com/en-us/powershell/module/dnsserver/add-dnsserverprimaryzone?view=windowsserver2022-ps
 # TO DO: Rename the 'default-first-site-name' to a meaningful name and add your subnet to it
 $SiteName = Read-Host "Enter the site name";
 Set-ADReplicationSite -Identity "Default-First-Site-Name" -Name $SiteName;
 Add-ADReplicationSubnet -Site $SiteName -Name (Get-Subnet -InterfaceAlias "Ethernet0");
 
+# Sources: 
 
 # TO DO: Authorize the DHCP server to serve DHCP requests in the subnet
 Add-DhcpServerInDC
+# Source: https://learn.microsoft.com/en-us/powershell/module/dhcpserver/add-dhcpserverindc?view=windowsserver2022-ps
 
 # TO DO: Remove warning about the DHCP server not being authorized to serve DHCP requests in the subnet
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" -Name "DisableDhcpMediaSense" -Value 1 -Type DWord
