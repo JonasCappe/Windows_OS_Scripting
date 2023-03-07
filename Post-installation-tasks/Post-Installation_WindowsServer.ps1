@@ -156,13 +156,14 @@ function Update-Preferences
             # SET KEYBOARD TO QWERTY (en-US)
             Set-WinUserLanguageList -LanguageList en-US -Force
             Write-Host "Updated keyboard to Qwerty(US)..."
+            Complete-Transaction
         }
         catch
         {
             Write-Error "Error could not set preferences! restoring to previous settings: $_";
             Undo-Transaction
         }
-        Complete-Transaction
+        
     }
 }
 
@@ -265,12 +266,13 @@ function Show-RemoteDesktopMenu
                 Write-Host "Enabled Remote Desktop..."
                 Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
                 Write-Host "Allowed RDP trough firewall..."
+                Complete-Transaction
             }
             catch {
                 Write-Error "Could not enable RDP at this moment: $_"
                 Undo-Transaction
             }
-            Complete-Transaction
+            
             
         }
         '2' 

@@ -17,14 +17,19 @@ $LogPath = "C:\Windows\NTDS"
 # TO DO: Promotion of the server to a domain controller
 
 
-
-# TO DO: Check if necessary roles are installed
-foreach ($Role in $Roles) {
-   
-    
-    if ((Get-WindowsFeature -Name $Role).Installed -eq $False) 
+function Add-Roles
+{
+    param(
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$Roles
+    );
+    foreach ($Role in $Roles) 
     {
-        Install-WindowsFeature -Name $Role -IncludeManagementTools
+        if ((Get-WindowsFeature -Name $Role).Installed -eq $False) # Check if necessary roles are installed
+        {
+            Install-WindowsFeature -Name $Role -IncludeManagementTools
+        }
     }
 }
 
@@ -63,7 +68,13 @@ Write-Host "Server has restarted proceding with script.";
 # After the reboot, check/correct the local DNS servers (Preferred and Alternate).
 function Update-DNSServers
 {
-    $DnsServers = Read-Host "Enter the DNS servers (comma seperated)";
+    param(
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$DnsServers
+    );
+
+    #$DnsServers = Read-Host "Enter the DNS servers (comma seperated)";
     $CurrentDnsServers = Get-DnsClientServerAddress -InterfaceIndex (Get-NetAdapter | Where-Object {$_.InterfaceDescription -like "*Ethernet*"}).InterfaceIndex;
 
     if($CurrentDnsServers.ServerAddresses -ne $DnsServers)
@@ -72,36 +83,95 @@ function Update-DNSServers
     }
 }
 
+function Add-ReversLookupZone
+{
+    # Create the reverse lookup zone for the subnet and make sure the pointer record of the first domain controller appears in that zone
+    $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet0' -and $_.AddressFamily -eq 'IPv4' } # Get ipconfig of the first network adapter
+    $Subnet = Out-NetworkIpAddress -IpAddress $ipconfig.IPAddress -PrefixLength $ipconfig.PrefixLength; # Get the network part of the IP address
 
-# Create the reverse lookup zone for the subnet and make sure the pointer record of the first domain controller appears in that zone
-$Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet0' -and $_.AddressFamily -eq 'IPv4' } # Get ipconfig of the first network adapter
-$Subnet = Out-NetworkIpAddress -IpAddress $ipconfig.IPAddress -PrefixLength $ipconfig.PrefixLength; # Get the network part of the IP address
+    Add-DnsServerPrimaryZone -Name (Get-ReverseLookupZoneName -InterfaceAlias "Ethernet0" ) -NetworkID $Subnet -ReplicationScope "Domain" -DynamicUpdate "Secure";
+    Add-DnsServerResourceRecordPTR -Name $env:computername -PtrDomainName Get-ComputerFQDN -ZoneName ("" + (Get-ReverseLookupZoneName -InterfaceAlias "Ethernet0") +".")
+} # Source: https://learn.microsoft.com/en-us/powershell/module/dnsserver/add-dnsserverprimaryzone?view=windowsserver2022-ps
 
-Add-DnsServerPrimaryZone -Name (Get-ReverseLookupZoneName -InterfaceAlias "Ethernet0" ) -NetworkID $Subnet -ReplicationScope "Domain" -DynamicUpdate "Secure";
-Add-DnsServerResourceRecordPTR -Name $env:computername -PtrDomainName Get-ComputerFQDN -ZoneName ("" + (Get-ReverseLookupZoneName -InterfaceAlias "Ethernet0") +".")
 
-# Sources: https://learn.microsoft.com/en-us/powershell/module/dnsserver/add-dnsserverprimaryzone?view=windowsserver2022-ps
-# TO DO: Rename the 'default-first-site-name' to a meaningful name and add your subnet to it
-$SiteName = Read-Host "Enter the site name";
-Set-ADReplicationSite -Identity "Default-First-Site-Name" -Name $SiteName;
-Add-ADReplicationSubnet -Site $SiteName -Name (Get-Subnet -InterfaceAlias "Ethernet0");
 
-# Sources: 
+# Rename the 'default-first-site-name' to a meaningful name and add your subnet to it
+function Update-DefaultFirstSiteName
+{
+    param(
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string]$SiteName
+    );
+    # Rename the 'default-first-site-name' to a meaningful name and add your subnet to it
+    #$SiteName = Read-Host "Enter the site name";
+    Set-ADReplicationSite -Identity "Default-First-Site-Name" -Name $SiteName; # Rename the default site
+    Add-ADReplicationSubnet -Site $SiteName -Name (Get-Subnet -InterfaceAlias "Ethernet0"); # Add the subnet of the first network adapter to the site
+}
 
-# TO DO: Authorize the DHCP server to serve DHCP requests in the subnet
-Add-DhcpServerInDC
-# Source: https://learn.microsoft.com/en-us/powershell/module/dhcpserver/add-dhcpserverindc?view=windowsserver2022-ps
+ function Enable-DHCCurrentSubnet
+ {
+    try 
+    {
+        Start-Transaction;
+        $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet0' -and $_.AddressFamily -eq 'IPv4' }; # Get ipconfig of the first network adapter
+        Add-DhcpServerInDC; # Authorize the DHCP server to serve DHCP requests in the subnet
+        
+        # Remove warning about the DHCP server not being authorized to serve DHCP requests in the subnet
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" -Name "DisableDhcpMediaSense" -Value 1 -Type DWord;
 
-# TO DO: Remove warning about the DHCP server not being authorized to serve DHCP requests in the subnet
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" -Name "DisableDhcpMediaSense" -Value 1 -Type DWord
+        # Create IPv4 scope for the subnet (DHCP scope option)
+        Add-DhcpServerv4Scope -Name (Read-Host "Enter Scope name") `
+        -StartRange (Get-FirstAddressRange -InterfaceAlias "Etherner0") `
+        -EndRange (Get-LastAddressRange -InterfaceAlias "Etherner0") `
+        -SubnetMask Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength; -State "Active"
+        Complete-Transaction;
+    }
+    catch 
+    {
+        Write-Error "Error could not Enable DHCP: $_";
+        Undo-Transaction;
+    }
+ } # Source: https://learn.microsoft.com/en-us/powershell/module/dhcpserver/add-dhcpserverindc?view=windowsserver2022-ps
 
-# TO DO: Create IPv4 scope for the subnet (DHCP scope option)
-Add-DhcpServerv4Scope -Name (Read-Host "Enter Scope name") -StartRange (Get-FirstAddressRange -InterfaceAlias "Etherner0") -EndRange (Get-LastAddressRange -InterfaceAlias "Etherner0")  -SubnetMask Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength; -State "Active"
-# TO DO: Create the correct DHCP server options
-Set-DhcpServerv4OptionValue -OptionId 6 -Value "10.0.0.1"
-Set-DhcpServerv4OptionValue -OptionId 15 -Value "newdomain.com"
-Set-DhcpServerv4OptionValue -OptionId 44 -Value "10.0.0.2"
-Set-DhcpServerv4OptionValue
+
+
+
+function Add-DHCPOptions # Add DHCP options
+{
+
+    param(
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [hashtable]$Options
+    );
+    if($Options.Count -eq 0)
+    {
+        Write-Error "No options were passed to the function";
+        return;
+    }
+
+    for($i = 0; $i -lt $Options.Count; $i++)
+    {
+        if ($Option.ContainsKey({6,15,44}))
+        {
+            Write-Error "The options 6, 15 and 44 are required";
+            return;
+        }
+        $Option = $Options[$i];
+        Set-DhcpServerv4OptionValue -OptionId $Option.Key -Value $Option.Value;
+    }
+   
+        
+    Set-DhcpServerv4OptionValue -OptionId 6 -Value "10.0.0.1"
+    Set-DhcpServerv4OptionValue -OptionId 15 -Value "newdomain.com"
+    Set-DhcpServerv4OptionValue -OptionId 44 -Value "10.0.0.2"
+    Set-DhcpServerv4OptionValue
+}
+
+
+# TO DO: 
+
 
 
 # ~ Functions ============================================================================================================
@@ -111,7 +181,7 @@ function Out-ReversedString # Function to reverse a string
         [parameter(Mandatory=$True,ValueFromPipeline=$True)]
         [ValidateNotNullOrEmpty()]
         [string[]]$string
-    )
+    );
 
    <#
     1. Match each character in the string, right to left
