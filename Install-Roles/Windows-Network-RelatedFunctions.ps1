@@ -134,3 +134,38 @@ function Get-LastAddressRange # Retrieve the last address of the range of usable
     $BroadcastAddress = Get-BroadcastAddress -InterfaceAlias $InterfaceAlias; # Retrieve the broadcast address of the interface
     return ([IpAddress]($BroadcastAddress - 1)).IPAddress # Return the last address of the range of usable addresses
 }
+
+function Get-AddressInSubnet
+{
+    param(
+        [parameter(Mandatory=$True, ValueFromPipeline=$True)]
+        [string]$IpAddress,
+        [parameter(Mandatory=$True, ValueFromPipeline=$True)]
+        [string]$SubnetMask,
+        [parameter(Mandatory=$False, ValueFromPipeline=$True)]
+        [int]$Place
+    );
+
+    $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress -SubnetMask $SubnetMask; # Retrieve the network address
+    return ([IpAddress]($NetworkAddress + $Place)).IPAddress; # Return the address at the specified place   
+}
+
+function Show-PrimaryDomainController
+{
+    param(
+        [parameter(Mandatory=$True, ValueFromPipeline=$True)]
+        [string]$Domain
+    );
+    Get-ADDomainController -Discover -Domain $Domain -Service "PrimaryDC";
+
+    if($null -eq $PrimaryDC)
+    {
+        Write-Host "No Primary Domain Controller found for domain $Domain" -ForegroundColor Red;
+        return $false;
+    }
+    else
+    {
+        Write-Host "Primary Domain Controller for domain $Domain is $PrimaryDC" -ForegroundColor Green;
+        return $true;
+    }
+}

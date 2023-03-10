@@ -10,13 +10,10 @@ if ($Admin -eq $False)
 
 # ~ global variables
 $Roles = "AD-Domain-Services","DNS","DHCP"
-$LogPath = "C:\Windows\NTDS"
 
 
 
 # TO DO: Promotion of the server to a domain controller
-
-
 function Add-Roles
 {
     param(
@@ -32,10 +29,7 @@ function Add-Roles
         }
     }
 }
-
-# Create the first domain controller in the new forest and new windows domain
-# Modified from: NWB Script based on generated script wizard
-function InstallFirstDomainController
+function Install-DomainController
 {
     $DomainName = Read-Host "Enter the domain name";
     $NetBiosName = Read-Host "Enter the NetBIOS name";
@@ -44,6 +38,33 @@ function InstallFirstDomainController
     {
         $LogPath = Read-Host "Enter the new logging path";
     }
+
+    if(!(Show-FirstDomainController -Domain $DomainName))
+    {
+        Install-PrimaryDomainController -DomainName $DomainName -NetBiosName $NetBiosName -LogPath $LogPath;
+    }
+    else
+    {
+        # TO DO: Install Domain controller in Forest
+        Write-Host "A domain controller already exists in the domain $DomainName";
+    }
+   
+}
+# Create the first domain controller in the new forest and new windows domain
+# Modified from: NWB Script based on generated script wizard
+function Install-PrimaryDomainController
+{
+    param(
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string]$DomainName,
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string]$NetBiosName,
+        [parameter(Mandatory=$False,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string]$LogPath= "C:\Windows\NTDS"
+    );
 
     Install-ADDSForest `
     -CreateDnsDelegation:$False `
@@ -59,6 +80,37 @@ function InstallFirstDomainController
     -SafeModeAdministratorPassword (ConvertTo-SecureString (Read-Host "Recovery password") -AsPlainText -Force) `
     -Credential (Get-Credential) `
     -Force:$True;
+}
+
+Install-SedondaryDomainController
+{
+    param(
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string]$DomainName,
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string]$NetBiosName,
+        [parameter(Mandatory=$False,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string]$LogPath= "C:\Windows\NTDS"
+    );
+    Install-ADDSDomainController `
+    -Credential (Get-Credential)
+    -DatabasePath "C:\Windows\NTDS" `
+    -DomainMode "WinThreshold" `
+    -DomainMode "WinThreshold" `
+    -DomainName $DomainName `
+    -DomainNetbiosName $NetBiosName `
+    -InstallDns:$True `
+    -LogPath $LogPath `
+    -NoRebootOnCompletion:$false `
+    -NoGlobalCatalog:$false `
+    -ReplicationSourceDC $ReplicationSourceDC `
+    -SiteName $SiteName `
+    -SysvolPath "C:\Windows\SYSVOL" `
+    -SafeModeAdministratorPassword (ConvertTo-SecureString (Read-Host "Recovery password") -AsPlainText -Force) `
+    -Force:$true
 }
 
 # reboot the server and wait for the server to come back online
@@ -122,9 +174,11 @@ function Update-DefaultFirstSiteName
 
         # Create IPv4 scope for the subnet (DHCP scope option)
         Add-DhcpServerv4Scope -Name (Read-Host "Enter Scope name") `
-        -StartRange (Get-FirstAddressRange -InterfaceAlias "Etherner0") `
-        -EndRange (Get-LastAddressRange -InterfaceAlias "Etherner0") `
-        -SubnetMask Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength; -State "Active"
+        -StartRange (Get-FirstAddressRange -InterfaceAlias "Ethernet0") `
+        -EndRange (Get-LastAddressRange -InterfaceAlias "Ethernet0") `
+        -SubnetMask Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength `
+        -State "Active";
+        Add-DhcpServer4ExcludeRange -ScopeId (Get-AddressInSubnet -InterfaceAlias "Ethernet0" -Place 0) -StartRange (Get-FirstAddressRange -InterfaceAlias "Ethernet0") -EndRange (Get-AddressInSubnet -InterfaceAlias "Ethernet0");
         Complete-Transaction;
     }
     catch 
@@ -163,10 +217,8 @@ function Add-DHCPOptions # Add DHCP options
     }
    
         
-    Set-DhcpServerv4OptionValue -OptionId 6 -Value "10.0.0.1"
-    Set-DhcpServerv4OptionValue -OptionId 15 -Value "newdomain.com"
-    Set-DhcpServerv4OptionValue -OptionId 44 -Value "10.0.0.2"
-    Set-DhcpServerv4OptionValue
+    Set-DhcpServerv4OptionValue -OptionId 6 -Value (Read-Host "Enter the DNS servers (comma seperated)");
+    Set-DhcpServerv4OptionValue -OptionId 15 -Value (Read-Host "Enter the domain name");
 }
 
 
