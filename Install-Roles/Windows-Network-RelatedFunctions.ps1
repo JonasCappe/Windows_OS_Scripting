@@ -156,7 +156,8 @@ function Show-PrimaryDomainController
         [parameter(Mandatory=$True, ValueFromPipeline=$True)]
         [string]$Domain
     );
-    Get-ADDomainController -Discover -Domain $Domain -Service "PrimaryDC";
+    
+    $PrimaryDC = (Get-ADDomainController -Crendential (Get-Credential) -Discover -Domain $Domain -Service "PrimaryDC" 2>$null);
 
     if($null -eq $PrimaryDC)
     {

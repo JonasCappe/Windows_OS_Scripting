@@ -11,9 +11,6 @@ if ($Admin -eq $False)
 # ~ global variables
 $Roles = "AD-Domain-Services","DNS","DHCP"
 
-
-
-# TO DO: Promotion of the server to a domain controller
 function Add-Roles
 {
     param(
@@ -25,28 +22,39 @@ function Add-Roles
     {
         if ((Get-WindowsFeature -Name $Role).Installed -eq $False) # Check if necessary roles are installed
         {
-            Install-WindowsFeature -Name $Role -IncludeManagementTools
+            Write-host "Installing $Role..."   
+            Install-WindowsFeature -Crendential (Get-Credential) -Name $Role -IncludeManagementTools
+            Write-Host "$Role installed"
+        }
+        else
+        {
+            Write-Host "$Role already installed"
         }
     }
 }
+# Promotion of the server to a domain controller
 function Install-DomainController
 {
+    $LogPath = "C:\Windows\NTDS"; # Default logging path
     $DomainName = Read-Host "Enter the domain name";
     $NetBiosName = Read-Host "Enter the NetBIOS name";
     $Answer = Read-Host "Change logging path (Y/N)?";
-   if($Answer.ToLower -eq "Y")
+   if($Answer.ToLower -eq "Y") # Check if the logging path should be changed, if so, ask for the new path
     {
         $LogPath = Read-Host "Enter the new logging path";
     }
+  
 
-    if(!(Show-FirstDomainController -Domain $DomainName))
+    if(!(Show-PrimaryDomainController -Domain $DomainName)) # Check if a domain controller already exists in the domain
     {
         Install-PrimaryDomainController -DomainName $DomainName -NetBiosName $NetBiosName -LogPath $LogPath;
     }
     else
     {
+
         # TO DO: Install Domain controller in Forest
         Write-Host "A domain controller already exists in the domain $DomainName";
+        Install-SecondaryDomainController -DomainName $DomainName -NetBiosName $NetBiosName -LogPath $LogPath;
     }
    
 }
@@ -75,14 +83,13 @@ function Install-PrimaryDomainController
     -ForestMode "WinThreshold" `
     -InstallDns:$True `
     -LogPath $LogPath `
-    -NoRebootOnCompletion:$False `
+    -NoRebootOnCompletion:$True `
     -SysvolPath "C:\Windows\SYSVOL" `
-    -SafeModeAdministratorPassword (ConvertTo-SecureString (Read-Host "Recovery password") -AsPlainText -Force) `
-    -Credential (Get-Credential) `
+    -SafeModeAdministratorPassword (ConvertTo-SecureString (Read-Host "Recovery password" -AsSecureString) -AsPlainText -Force) `
     -Force:$True;
 }
 
-Install-SedondaryDomainController
+function Install-SecondaryDomainController
 {
     param(
         [parameter(Mandatory=$True,ValueFromPipeline=$True)]
@@ -96,7 +103,6 @@ Install-SedondaryDomainController
         [string]$LogPath= "C:\Windows\NTDS"
     );
     Install-ADDSDomainController `
-    -Credential (Get-Credential)
     -DatabasePath "C:\Windows\NTDS" `
     -DomainMode "WinThreshold" `
     -DomainMode "WinThreshold" `
@@ -104,18 +110,15 @@ Install-SedondaryDomainController
     -DomainNetbiosName $NetBiosName `
     -InstallDns:$True `
     -LogPath $LogPath `
-    -NoRebootOnCompletion:$false `
+    -NoRebootOnCompletion:$True `
     -NoGlobalCatalog:$false `
     -ReplicationSourceDC $ReplicationSourceDC `
     -SiteName $SiteName `
     -SysvolPath "C:\Windows\SYSVOL" `
-    -SafeModeAdministratorPassword (ConvertTo-SecureString (Read-Host "Recovery password") -AsPlainText -Force) `
+    -SafeModeAdministratorPassword (ConvertTo-SecureString (Read-Host "Recovery password"-AsSecureString) -AsPlainText -Force) `
     -Force:$true
 }
 
-# reboot the server and wait for the server to come back online
-Start-Sleep -Seconds 120;
-Write-Host "Server has restarted proceding with script.";
 
 # After the reboot, check/correct the local DNS servers (Preferred and Alternate).
 function Update-DNSServers
@@ -189,8 +192,6 @@ function Update-DefaultFirstSiteName
  } # Source: https://learn.microsoft.com/en-us/powershell/module/dhcpserver/add-dhcpserverindc?view=windowsserver2022-ps
 
 
-
-
 function Add-DHCPOptions # Add DHCP options
 {
 
@@ -209,7 +210,7 @@ function Add-DHCPOptions # Add DHCP options
     {
         if ($Option.ContainsKey({6,15,44}))
         {
-            Write-Error "The options 6, 15 and 44 are required";
+            Write-Error "The options 6, 15 required";
             return;
         }
         $Option = $Options[$i];
@@ -217,14 +218,9 @@ function Add-DHCPOptions # Add DHCP options
     }
    
         
-    Set-DhcpServerv4OptionValue -OptionId 6 -Value (Read-Host "Enter the DNS servers (comma seperated)");
-    Set-DhcpServerv4OptionValue -OptionId 15 -Value (Read-Host "Enter the domain name");
+    #Set-DhcpServerv4OptionValue -OptionId 6 -Value (Read-Host "Enter the DNS servers (comma seperated)");
+    #Set-DhcpServerv4OptionValue -OptionId 15 -Value (Read-Host "Enter the domain name");
 }
-
-
-# TO DO: 
-
-
 
 # ~ Functions ============================================================================================================
 function Out-ReversedString # Function to reverse a string
@@ -242,6 +238,33 @@ function Out-ReversedString # Function to reverse a string
    #>
     return (([regex]::Matches($string,'.','RightToLeft') `
     | ForEach-Object {$_.value}) `
-    -join '');
-    
+    -join '');    
 }
+
+# ========================================================================================================================
+Invoke-Command -ComputerName $ADController -ScriptBlock -Verbose `
+{
+    Add-Roles -Roles $Roles
+    Install-DomainController;
+
+}
+# reboot the server and wait for the server to come back online
+Write-Host "Restarting server..."
+Restart-Computer -ComputerName $ADController -Wait -For PowerShell -Timeout 300 -Delay 2; 
+# Source: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/restart-computer?view=powershell-7.3#example-6-restart-a-remote-computer-and-wait-for-powershell
+Write-Host "Server has restarted proceding with script...";
+
+
+Invoke-Command -ComputerName $ADController -ScriptBlock -Verbose `
+{
+    Update-DNSServers -DnsServers (Read-Host "Enter the DNS servers (comma seperated)");
+    Add-ReversLookupZone;
+    Update-DefaultFirstSiteName -SiteName (Read-Host "Enter new default-first-sitename");
+    Enable-DHCCurrentSubnet;
+    $DnsServers = (Read-Host "Enter the DNS servers (comma seperated)");
+    $DomainName = (Read-Host "Enter the domain name");
+    Add-DHCPOptions -Options @{6=$DnsServers; 15=$DomainName}
+
+}
+
+# Source hashtables: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_hash_tables?view=powershell-7.3
