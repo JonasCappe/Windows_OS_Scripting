@@ -12,8 +12,8 @@
 $ComputerName = (Read-Host "Enter the name of the AD controller"); # Set the computer name
 $targetSession = New-PSSession -ComputerName $ComputerName -Credential (Get-Credential); # Create a new session to the remote server
 # Main script for installing the roles on a Windows Server
-$SourcePath1 = "D:\Powershell\Windows_OS_Scripting\Install-Roles\Windows-Network-RelatedFunctions.ps1";
-$DestinationPath1 = "C:\temp\Windows-Network-RelatedFunctions.ps1";
+$SourcePath1 = "D:\Powershell\Windows_OS_Scripting\Install-Roles\Windows-Network-RelatedFunctions.ps1"; # Path to the script containing the functions, locally
+$DestinationPath1 = "C:\temp\Windows-Network-RelatedFunctions.ps1"; # Path to the script containing the functions, remotely
 
 # Network related functions
 $SourcePath2 = "D:\Powershell\Windows_OS_Scripting\Install-Roles\Install-Roles.ps1";
@@ -37,7 +37,7 @@ Copy-Item -ToSession $targetSession -Path $SourcePath2 -Destination $Destination
 $remotePath = "C:\temp\" # Set the remote path
 
 
-Invoke-Command -Session $targetSession -ArgumentList $Roles -ScriptBlock { # Execute the script on the remote server
+Invoke-Command -Session $targetSession -ScriptBlock { # Execute the script on the remote server
     Set-Location $using:remotePath; # First set the working directory to the remote path
     # Then execute the scripts for loading the functions
     . ".\Install-Roles.ps1"; 
@@ -45,19 +45,20 @@ Invoke-Command -Session $targetSession -ArgumentList $Roles -ScriptBlock { # Exe
     
     Add-Roles -Roles $using:Roles; # Add the roles defined in the $Roles variable
     Install-DomainController; # Install the domain controller, check if primary domain controller exists for the provided domain name
+
+    Write-Host "Restarting server..."
+    Restart-Computer -Force;
 }
 # Source: https://learn.microsoft.com/en-us/powershell/scripting/learn/remoting/running-remote-commands?view=powershell-7.3
 
+Remove-PSSession $targetSession; # Remove the session to the remote server
 
-
-# reboot the server and wait for the server to come back online
-Write-Host "Restarting server..."
-Restart-Computer $ComputerName -Protocol WSMan -Wait -For PowerShell -Timeout 360 -Delay 2; 
+# wait for the server to come back online - example microsoft docs didn't work, remote server was didn't respond
+Start-Sleep -Seconds 600; # Wait for the server to restart by sleeping for 10 minutes
 Write-Host "Server has restarted proceding with script...";
-# Source: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/restart-computer?view=powershell-7.3#example-6-restart-a-remote-computer-and-wait-for-powershell
 
-
-
+# Create a new session to the remote server
+$targetSession = New-PSSession -ComputerName $ComputerName -Credential (Get-Credential);
 Invoke-Command -Session $targetSession -ScriptBlock {
     Set-Location $using:remotePath
     . ".\Install-Roles.ps1";

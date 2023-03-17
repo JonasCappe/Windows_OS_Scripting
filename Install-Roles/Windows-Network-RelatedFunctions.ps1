@@ -10,7 +10,7 @@ function Out-NetworkIpAddress # Function to get the network part of an IP addres
         [string[]]$SubnetMask,
         [parameter(Mandatory=$False,ValueFromPipeline=$True)]
         [ValidateNotNullOrEmpty()]
-        [string[]]$PrefixLength=24
+        [int]$PrefixLength=24
     );
 
     if($null -ne $PrefixLength)
@@ -98,7 +98,7 @@ function Get-Subnet # Retrieve the subnet of an interface (IP address and prefix
         [int]$InterfaceIndex
     )
     $ipAddress = Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object {$_.AddressFamily -eq "IPv4"};
-    return (Out-NetworkIpAddress -IpAddress $ipAddress.IPAddress -SubnetMask $ipAddress.SubnetMask)/$ipAddress.PrefixLength;
+    return ""+(Out-NetworkIpAddress -IpAddress $ipAddress.IPAddress -SubnetMask (Convert-PrefixToSubnetMask -PrefixLength $ipconfig.PrefixLength))+"/"+$ipAddress.PrefixLength;
 }
 
 function Get-BroadcastAddress # Retrieve the broadcast address of an interface

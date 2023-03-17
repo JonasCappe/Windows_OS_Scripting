@@ -89,7 +89,7 @@ function Install-DomainController
         # Ask for the domain name, the NetBIOS name and the logging path
         $LogPath = "C:\Windows\NTDS"; # Default logging path
         $DomainName = Read-Host "Enter the domain name";
-        $NetBiosName = Read-Host "Enter the NetBIOS name";
+        $NetBiosName = (Read-Host "Enter the NetBIOS name").ToUpper();
         # prompt the user to change the logging path
         $Answer = Read-Host "Change logging path (Y/N)?";
         if($Answer.ToLower -eq "Y") # Check if the logging path should be changed, if so, ask for the new path
@@ -260,12 +260,15 @@ function Add-ReversLookupZone
         .EXAMPLE
         Add-ReversLookupZone
     #>
+    # Get the interface index of the network adapter that is connected to the network
+    $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
     # Create the reverse lookup zone for the subnet and make sure the pointer record of the first domain controller appears in that zone
-    $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' } # Get ipconfig of the first network adapter
-    $Subnet = Out-NetworkIpAddress -IpAddress $ipconfig.IPAddress -PrefixLength $ipconfig.PrefixLength; # Get the network part of the IP address
-
-    Add-DnsServerPrimaryZone -Name (Get-ReverseLookupZoneName -InterfaceIndex "$InterfaceIndex" ) -NetworkID $Subnet -ReplicationScope "Domain" -DynamicUpdate "Secure";
-    Add-DnsServerResourceRecordPTR -Name $env:computername -PtrDomainName Get-ComputerFQDN -ZoneName ("" + (Get-ReverseLookupZoneName -InterfaceIndex "$InterfaceIndex") +".")
+    $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -notlike '*Loopback*' } # Get ipconfig of the first network adapter
+    
+    $Subnet = Out-NetworkIpAddress -IpAddress $Ipconfig.IpAddress -PrefixLength ($Ipconfig.PrefixLength); # Get the network part of the IP address
+   
+    Add-DnsServerPrimaryZone -NetworkID $Subnet -ReplicationScope "Domain" -DynamicUpdate "Secure";
+    Add-DnsServerResourceRecordPTR -Name $env:computername -PtrDomainName Get-ComputerFQDN -ZoneName ("0." + (Get-ReverseLookupZoneName -InterfaceIndex $InterfaceIndex));
 } # Source: https://learn.microsoft.com/en-us/powershell/module/dnsserver/add-dnsserverprimaryzone?view=windowsserver2022-ps
 
 
@@ -291,10 +294,15 @@ function Update-DefaultFirstSiteName
         [ValidateNotNullOrEmpty()]
         [string]$SiteName
     );
+    $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
+
     # Rename the 'default-first-site-name' to a meaningful name and add your subnet to it
-    #$SiteName = Read-Host "Enter the site name";
-    Set-ADReplicationSite -Identity "Default-First-Site-Name" -Name $SiteName; # Rename the default site
-    Add-ADReplicationSubnet -Site $SiteName -Name (Get-Subnet -InterfaceIndex "$InterfaceIndex"); # Add the subnet of the first network adapter to the site
+
+    # Rename the 'default-first-site-name' to a meaningful name
+    Get-ADObject -SearchBase (Get-ADRootDSE).ConfigurationNamingContext -Filter 'objectclass -like "site"' | Set-ADObject -DisplayName $SiteName; 
+    Get-ADObject -SearchBase (Get-ADRootDSE).ConfigurationNamingContext -Filter 'objectclass -like "site"' | Rename-ADObject -NewName $SiteName;
+
+    New-ADReplicationSubnet -Site $SiteName -Name (Get-Subnet -InterfaceIndex $InterfaceIndex); # Add the subnet of the first network adapter to the site
 }
 
  function Enable-DHCCurrentSubnet
@@ -314,7 +322,8 @@ function Update-DefaultFirstSiteName
         -EndRange (Get-LastAddressRange -InterfaceIndex "$InterfaceIndex") `
         -SubnetMask Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength `
         -State "Active";
-        Add-DhcpServer4ExcludeRange -ScopeId (Get-AddressInSubnet -InterfaceIndex "$InterfaceIndex" -Place 0) -StartRange (Get-FirstAddressRange -InterfaceIndex "$InterfaceIndex") -EndRange (Get-AddressInSubnet -InterfaceIndex "$InterfaceIndex");
+        Add-DhcpServer4ExcludeRange -ScopeId (Get-AddressInSubnet -InterfaceIndex $InterfaceIndex -Place 0) -StartRange (Get-FirstAddressRange -InterfaceIndex $InterfaceIndex) -EndRange (Get-AddressInSubnet -InterfaceIndex "$InterfaceIndex");
+        Set-DhcpServerv4OptionValue -ScopeId (Get-AddressInSubnet -InterfaceIndex $InterfaceIndex -Place 0) -Router (Get-LastAddressRange -InterfaceIndex $InterfaceIndex);
         Complete-Transaction;
     }
     catch 
