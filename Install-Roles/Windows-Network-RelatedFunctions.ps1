@@ -63,11 +63,11 @@ function Get-ReverseLookupZoneName # Function to get the reverse lookup zone nam
 {
     param(
         [parameter(Mandatory=$True, ValueFromPipeline=$True)]
-        [string]$InterfaceAlias
+        [int]$InterfaceIndex
     )
 
 
-    $IpAddress = Get-NetIPAddress -InterfaceAlias $InterfaceAlias | Where-Object {$_.AddressFamily -eq "IPv4"}
+    $IpAddress = Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object {$_.AddressFamily -eq "IPv4"}
     
     $SubnetMask = Convert-PrefixToSubnetMask -PrefixLength $IpAddress.PrefixLength # Convert the prefix length to a subnet mask
     $Octets = $IpAddress.IPAddress.Split(".") # Split the IP address and subnet mask into octets
@@ -95,9 +95,9 @@ function Get-Subnet # Retrieve the subnet of an interface (IP address and prefix
 {
     param(
         [parameter(Mandatory=$True, ValueFromPipeline=$True)]
-        [string]$InterfaceAlias
+        [int]$InterfaceIndex
     )
-    $ipAddress = Get-NetIPAddress -InterfaceAlias $InterfaceAlias | Where-Object {$_.AddressFamily -eq "IPv4"};
+    $ipAddress = Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object {$_.AddressFamily -eq "IPv4"};
     return (Out-NetworkIpAddress -IpAddress $ipAddress.IPAddress -SubnetMask $ipAddress.SubnetMask)/$ipAddress.PrefixLength;
 }
 
@@ -105,9 +105,9 @@ function Get-BroadcastAddress # Retrieve the broadcast address of an interface
 {
     param(
         [parameter(Mandatory=$True, ValueFromPipeline=$True)]
-        [string]$InterfaceAlias
+        [int]$InterfaceIndex
     )
-    $IpAddress = Get-NetIPAddress -InterfaceAlias $InterfaceAlias | Where-Object {$_.AddressFamily -eq "IPv4"};
+    $IpAddress = Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object {$_.AddressFamily -eq "IPv4"};
     $SubnetMask = Convert-PrefixToSubnetMask -PrefixLength $IpAddress.PrefixLength;
     $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress.IPAddress -SubnetMask $SubnetMask;
     return ([IpAddress]$NetworkAddress).IPAddress -bor -bnot ([IpAddress]$SubnetMask).IPAddress;
@@ -117,7 +117,7 @@ function Get-FirstAddressRange # Retrieve the first address of the range of usab
 {
     param(
         [parameter(Mandatory=$True, ValueFromPipeline=$True)]
-        [string]$InterfaceAlias
+        [int]$InterfaceIndex
     )
     $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress.IPAddress -SubnetMask $SubnetMask; # Retrieve the network address of the interface
     return ([IpAddress]($NetworkAddress + 1)).IPAddress # Return the first address of the range of usable addresses
@@ -127,9 +127,9 @@ function Get-LastAddressRange # Retrieve the last address of the range of usable
 {
     param(
         [parameter(Mandatory=$True, ValueFromPipeline=$True)]
-        [string]$InterfaceAlias
+        [int]$InterfaceIndex
     )
-    $BroadcastAddress = Get-BroadcastAddress -InterfaceAlias $InterfaceAlias; # Retrieve the broadcast address of the interface
+    $BroadcastAddress = Get-BroadcastAddress -InterfaceIndex $InterfaceIndex; # Retrieve the broadcast address of the interface
     return ([IpAddress]($BroadcastAddress - 1)).IPAddress # Return the last address of the range of usable addresses
 }
 
@@ -148,23 +148,41 @@ function Get-AddressInSubnet
     return ([IpAddress]($NetworkAddress + $Place)).IPAddress; # Return the address at the specified place   
 }
 
-function Show-PrimaryDomainController
+# TO DO: CHECK IF PROMOTED TO DC WIT WMI OBJECT
+function Show-PromotionInProgress
 {
-    param(
-        [parameter(Mandatory=$True, ValueFromPipeline=$True)]
-        [string]$Domain
-    );
-    
-    $PrimaryDC = (Get-ADDomainController -Credential (Get-Credential) -Discover -Domain $Domain -Service "PrimaryDC" 2>$null);
-
-    if($null -eq $PrimaryDC)
+    if((Get-WmiObject Win32_NTDomain).DcPromoOperationProgress -eq 1) # Check if the server needs to be promoted to a domain controller 
     {
-        Write-Host "No Primary Domain Controller found for domain $Domain" -ForegroundColor Red;
-        return $false;
+        Write-Host "Doomain controller promotion in progress" -ForegroundColor Green;
+        return $true;
     }
     else
     {
-        Write-Host "Primary Domain Controller for domain $Domain is $PrimaryDC" -ForegroundColor Green;
-        return $true;
+        Write-Host "No domain controller promotion in progress" -ForegroundColor Green;
+        return $false;
     }
+}
+function Get-ADDCRole
+{
+    $Domain = (Get-WmiObject Win32_ComputerSystem).Domain; # Get the domain name
+    
+    # Check if the server is a domain controller
+    if((Get-WmiObject Win32_ComputerSystem).Name -eq(Get-ADDomainController -Discover -Domain $Domain -Service "PrimaryDC" -ErrorAction SilentlyContinue).Name) # Check if the server is a primary domain controller
+    {
+        return "PrimaryDC";
+    }
+    elseif((Get-WmiObject Win32_ComputerSystem).Name -eq(Get-ADDomainController -Discover -Domain $Domain -Service "BackupDC" -ErrorAction SilentlyContinue).Name) # Check if the server is a backup domain controller
+    {
+        return "BackupDC";
+    }
+    else # The server is a member server
+    {
+        return "MemberServer";
+    }
+}
+
+function Get-PrimaryDC
+{
+    $Domain = (Get-WmiObject Win32_ComputerSystem).Domain; # Get the domain name
+    return (Get-ADDomainController -Discover -Domain $Domain -Service "PrimaryDC" -ErrorAction SilentlyContinue).Name; # Get the name of the primary domain controller
 }

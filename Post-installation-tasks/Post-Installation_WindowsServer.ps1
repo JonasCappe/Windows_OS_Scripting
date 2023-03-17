@@ -3,17 +3,17 @@
 # TODO: REFACTOR CODE: SPLITS THINS MORE IN THERE OWN SCOPES SRP!
 
 # ~ GLOBAL VARIABLES
-$interfaceAlias = "Ethernet0"; # Interface alias of the network adapter to configure
-$connectionUrl = "https://www.howest.be"; # URL to test internet connectivity
+$InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex);  # Get the interface index of the network adapter that is connected to the network
+$ConnectionUrl = "https://www.howest.be"; # URL to test internet connectivity
 
 # CHECK IF SCRIPT IS RUNNED WITH ELEVATED PERMISSIONS IF NOT RESTART WITH ELEVATED PERMISSUONS
-$admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+<#$admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if ($admin -eq $false) 
 {
     Start-Process powershell.exe -Verb RunAs -ArgumentList "-File $($MyInvocation.MyCommand.Path)" -ErrorAction Stop; #variable contains information about the current invocation of the script, including the command used to start the script,
     exit;
-}
+}#>
 # ~ CHECKS =======================================================================================================================================================================================================================================================
 # CHECK OF SERVER IS CORE VERSION
 function Show-IsServerCore
@@ -30,10 +30,10 @@ function Show-IsServerCore
 # CHECK IF STATIC IP IS SET (DHCP IS Disabled = Static IP)
 function Show-StaticIpSet
 {
-    $dhcpEnabled=(Get-NetIPInterface -ifAlias $interfaceAlias | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.Dhcp}); # Get DHCP status
-    $staticIpSet=(Get-NetIPAddress -InterfaceAlias $interfaceAlias | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.IPAddress}); # Get IP Address
+    $dhcpEnabled=(Get-NetIPInterface -ifAlias $InterfaceIndex | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.Dhcp}); # Get DHCP status
+    $StaticIpSet=(Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.IPAddress}); # Get IP Address
     
-    if($dhcpEnabled  -like "D*" && $staticIpSet) # Check if DHCP is disabled 
+    if($dhcpEnabled  -like "D*" -and $StaticIpSet) # Check if DHCP is disabled 
     {
         return $true;
     }
@@ -43,9 +43,9 @@ function Show-StaticIpSet
 # CHECK DNS SERVER(s) IS SET
 function Show-DnsServersSet
 {
-    $dnsServersSet=@(Get-DnsClientServerAddress -AddressFamily IPv4 -InterfaceAlias $interfaceAlias); # Get DNS Servers
+    $DnsServersSet=@(Get-DnsClientServerAddress -AddressFamily IPv4 -InterfaceIndex $InterfaceIndex); # Get DNS Servers
 
-    if($null -ne ($dnsServersSet | ForEach-Object {$_.ServerAddresses})) # Check if DNS Servers ar not null
+    if($null -ne ($DnsServersSet | ForEach-Object {$_.ServerAddresses})) # Check if DNS Servers ar not null
     {
         return $true;
     }
@@ -66,7 +66,7 @@ function Show-DefaultGatewaySet
 function Show-InternetIsReachable
 {
     try {
-        Invoke-WebRequest -Uri $connectionUrl -UseBasicParsing -ErrorAction Stop | Out-Null;
+        Invoke-WebRequest -Uri $ConnectionUrl -UseBasicParsing -ErrorAction Stop | Out-Null;
         Write-Host "Internet access is available."
     }
     catch {
@@ -83,6 +83,8 @@ function Update-ComputerName
 
     # Set the hostname (without restart option)
     Rename-Computer -NewName $newName;
+
+    Show-MainMenu;
 }
 
 # SET IPv4 CONFIGURATION - IF ALREADY SET OVERWRITE SETTINGS (first clears previous settings)
@@ -97,16 +99,18 @@ function Set-StaticIp
 
     if($overWrite) # If overwrite is true clear previous settings
     {
-        Get-NetIPAddress -InterfaceAlias $interfaceAlias | Remove-NetIPAddress  -Confirm:$false; # Remove previous IP settings 
+        Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Remove-NetIPAddress  -Confirm:$false; # Remove previous IP settings 
     }
 
     # Related commands inside transaction I one fails rollback - prevents loosing internet config
     Start-Transaction
-    Get-NetIPInterface -InterfaceAlias $interfaceAlias | Remove-NetRoute -Confirm:$false # Remove previous default gateway
-    if(!(Show-StaticIpSet)) { Set-NetIPInterface -InterfaceAlias $interfaceAlias -AddressFamily IPv4 -Dhcp Disabled; } # IF DHCP is enabled disable
-    New-NetIPAddress -InterfaceAlias $interfaceAlias -IPAddress $ipAddress  -PrefixLength $prefix -DefaultGateway $defaultGateway -AddressFamily IPv4;
-    Restart-NetAdapter -InterfaceAlias $InterfaceAlias; # restart adapter
+    Get-NetIPInterface -InterfaceIndex $InterfaceIndex | Remove-NetRoute -Confirm:$false # Remove previous default gateway
+    if(!(Show-StaticIpSet)) { Set-NetIPInterface -InterfaceIndex $InterfaceIndex -AddressFamily IPv4 -Dhcp Disabled; } # IF DHCP is enabled disable
+    New-NetIPAddress -InterfaceIndex $InterfaceIndex -IPAddress $ipAddress  -PrefixLength $prefix -DefaultGateway $defaultGateway -AddressFamily IPv4;
+    Restart-NetAdapter -InterfaceIndex $InterfaceIndex; # restart adapter
     Complete-Transaction 
+
+    Show-MainMenu;
 }
 
 # ~ CHANGE TIMEZONE TO BRUSSELS
@@ -128,6 +132,7 @@ function Update-TimeZoneToBrussels
     else {
         Write-Host "Timezone is already set to Brussels."
     }
+    Show-MainMenu;
 }
 
 # ~ UDPATE PREFERENCES ON DESKTOP EXPERIENCE
@@ -163,7 +168,7 @@ function Update-Preferences
             Write-Error "Error could not set preferences! restoring to previous settings: $_";
             Undo-Transaction
         }
-        
+        Show-MainMenu;
     }
 }
 
@@ -185,24 +190,24 @@ function Show-NetworkConfigMenu
     {
         '0'
         { 
-            Set-NetIPInterface -InterfaceAlias $interfaceAlias -Dhcp Enabled # EnableDHCP
+            Set-NetIPInterface -InterfaceIndex $InterfaceIndex -Dhcp Enabled # EnableDHCP
             Write-Host "Enabled DHCP"
             if(Show-DnsServersSet) 
             {
                 Write-Host "DNS server settings detected..."
-                Set-DnsClientServerAddress -InterfaceAlias $interfaceAlias -ResetServerAddresses # Clear DNS settings
+                Set-DnsClientServerAddress -InterfaceIndex $InterfaceIndex -ResetServerAddresses # Clear DNS settings
                 Write-Host "Removed previous DNS servers..." 
             } # Clear DNS settings
             Clear-DnsClientCache # Clear DNS cache
             Write-Host "DNS cash cleared..."
             if(Show-DefaultGatewaySet) # Check if default gateway is set, if so remove it
             { 
-                Set-NetIPInterface -InterfaceAlias Ethernet0 | Remove-NetRoute -Confirm:$false 
+                Set-NetIPInterface -InterfaceIndex Ethernet0 | Remove-NetRoute -Confirm:$false 
                 Write-Host "Removed prevous default gateway"
             } # Remove default gateway
 
             Write-Host "The network interface will now be restarted to retrieve a new lease"
-            Restart-NetAdapter -InterfaceAlias $InterfaceAlias # restart adapter to retrieve new lease
+            Restart-NetAdapter -InterfaceIndex $InterfaceIndex # restart adapter to retrieve new lease
             
         }
         '1' 
@@ -228,20 +233,18 @@ function Show-NetworkConfigMenu
 
             Clear-DnsClientCache # Clear DNS cache
             Write-Host "DNS cash cleared..."
-            Set-DnsClientServerAddress -InterfaceAlias $interfaceAlias -ServerAddresses ($preferedDNS,$alternateDNS) # Set DNS servers
+            Set-DnsClientServerAddress -InterfaceIndex $InterfaceIndex -ServerAddresses ($preferedDNS,$alternateDNS) # Set DNS servers
             Write-Host "Updated DNS servers..." 
         }
         '3'
         {
-            Get-NetAdapterBinding -InterfaceAlias $interfaceAlias | Set-NetAdapterBinding -Enabled:$false -ComponentID ms_tcpip6 # Disable IPv6 protocol for interface
-            Write-Host "Disabled IPv6 protocol for interface $InterfaceAlias";
+            Get-NetAdapterBinding -InterfaceIndex $InterfaceIndex | Set-NetAdapterBinding -Enabled:$false -ComponentID ms_tcpip6 # Disable IPv6 protocol for interface
+            Write-Host "Disabled IPv6 protocol for interface $InterfaceIndex";
         }
         '4' { Show-InternetIsReachable }
-        '5' { return }
-        default { Display-NetworkConfigMenu }
+        '5' { Show-MainMenu }
+        default { Show-NetworkConfigMenu }
     }
-    pause
-    Show-NetworkConfigMenu
 }
 
 # ~ ENABLE REMOTE DESKTOP
@@ -280,11 +283,9 @@ function Show-RemoteDesktopMenu
             $user = Read-Host "Enter User of user to allow to remote in: "
             Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user # Add user to remote desktop users group
         }
-        '3' { return }
-        default { Display-RemoteSettingsMenu }
+        '3' { Show-MainMenu }
+        default { Show-RemoteDesktopMenu }
     }
-    pause
-    Show-RemoteDesktopMenu 
 }
 
 # ~ DISABLE IE ENHANCED SECURITY (on Desktop experience)
@@ -293,7 +294,7 @@ function Show-IEEnhancedSecurityMenu
     if(!(Show-IsServerCore))
     {
         Clear-Host
-        Write-Host "========== Remote Settings =========="
+        Write-Host "========== IE Enhanced Security =========="
         Write-Host "1. Disable for Admins"
         Write-Host "2. Disable for Users"
         Write-Host "3. Disable for everyone"
@@ -308,6 +309,8 @@ function Show-IEEnhancedSecurityMenu
                     # Disable IE Enhanced Security for Administrators
                     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
                     Write-Host "Disabled IE Enhanced Security for Administrators"
+
+                    Restart-NetAdapter -InterfaceIndex "Ethernet0" # Restart network adapter to apply changes
                 }
                 catch {
                     Write-Error "Could not disable IE Enhanced Security for administrators: $_"
@@ -320,6 +323,8 @@ function Show-IEEnhancedSecurityMenu
                     # Disable IE Enhanced Security for Users
                     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
                     Write-Host "Disabled IE Enhanced Security for Users"
+
+                    Restart-NetAdapter -InterfaceIndex "Ethernet0" # Restart network adapter to apply changes
                 }
                 catch {
                     Write-Error "Could not disable IE Enhanced Security for users: $_"
@@ -336,17 +341,18 @@ function Show-IEEnhancedSecurityMenu
                     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
 
                     Write-Host "Disabled IE Enhanced Security for Everyone"
+
+                    Restart-NetAdapter -InterfaceIndex "Ethernet0" # Restart network adapter to apply changes
                 }
                 catch {
                     Write-Error "Could not disable IE Enhanced Security for everyone: $_"
                 }
                 
             }
-            '4' { return }
+            '4' { Show-MainMenu }
             default { Show-IEEnhancedSecurityMenu }
         }
-        pause
-        Show-IEEnhancedSecurityMenu
+        
     }
     else 
     {
@@ -378,10 +384,10 @@ function Show-MainMenu { # Main menu - shows all options
         '4' { Update-TimeZoneToBrussels }
         '5' { Show-IEEnhancedSecurityMenu }
         '6' { Update-Preferences }
-        '7' { return }
-        '8' { Restart-Computer }
+        '7' { Show-MainMenu }
+        '8' { Restart-Computer -Force }
         default { Show-MainMenu }
     }
 }
 
-Show-MainMenu
+# TO DO: fix exiting script, after action is done instead returning to main menu
