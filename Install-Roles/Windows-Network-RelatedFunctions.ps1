@@ -11,9 +11,7 @@ function Out-NetworkIpAddress # Function to get the network part of an IP addres
         [parameter(Mandatory=$False,ValueFromPipeline=$True)]
         [ValidateNotNullOrEmpty()]
         [string[]]$PrefixLength=24
-
-
-    )
+    );
 
     if($null -ne $PrefixLength)
     {
@@ -157,7 +155,7 @@ function Show-PrimaryDomainController
         [string]$Domain
     );
     
-    $PrimaryDC = (Get-ADDomainController -Crendential (Get-Credential) -Discover -Domain $Domain -Service "PrimaryDC" 2>$null);
+    $PrimaryDC = (Get-ADDomainController -Credential (Get-Credential) -Discover -Domain $Domain -Service "PrimaryDC" 2>$null);
 
     if($null -eq $PrimaryDC)
     {

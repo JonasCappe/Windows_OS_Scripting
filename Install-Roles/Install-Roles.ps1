@@ -1,15 +1,19 @@
-. ./Network-RelatedFunctions.ps1 # Import the function to get the network part of an IP address
+
 # CHECK IF SCRIPT IS RUNNED WITH ELEVATED PERMISSIONS IF NOT RESTART WITH ELEVATED PERMISSUONS
-$Admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+<#$Admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if ($Admin -eq $False) 
 {
     Start-Process powershell.exe -Verb RunAs -ArgumentList "-File $($MyInvocation.MyCommand.Path)" -ErrorAction Stop; #variable contains information about the current invocation of the script, including the command used to start the script,
     exit;
-}
+}#>
+#Set-Location .\Install-Roles # Set the current directory to the directory of the script
+#Set-Location .\Install-Roles # Set the current directory to the directory of the script
+. ".\Windows-Network-RelatedFunctions.ps1" # Import the function to get the network part of an IP address
 
-# ~ global variables
-$Roles = "AD-Domain-Services","DNS","DHCP"
+
+
+#$ADController = (Read-Host "Enter the name of the AD controller").ToLower();
 
 function Add-Roles
 {
@@ -23,7 +27,7 @@ function Add-Roles
         if ((Get-WindowsFeature -Name $Role).Installed -eq $False) # Check if necessary roles are installed
         {
             Write-host "Installing $Role..."   
-            Install-WindowsFeature -Crendential (Get-Credential) -Name $Role -IncludeManagementTools
+            Install-WindowsFeature -Credential (Get-Credential) -Name $Role -IncludeManagementTools
             Write-Host "$Role installed"
         }
         else
@@ -51,7 +55,6 @@ function Install-DomainController
     }
     else
     {
-
         # TO DO: Install Domain controller in Forest
         Write-Host "A domain controller already exists in the domain $DomainName";
         Install-SecondaryDomainController -DomainName $DomainName -NetBiosName $NetBiosName -LogPath $LogPath;
@@ -75,8 +78,7 @@ function Install-PrimaryDomainController
     );
 
     Install-ADDSForest `
-    -CreateDnsDelegation:$False `
-    -DatabasePath "C:\Windows\NTDS" `
+    -DatabasePath $LogPath `
     -DomainMode "WinThreshold" `
     -DomainName $DomainName `
     -DomainNetbiosName $NetBiosName `
@@ -103,7 +105,7 @@ function Install-SecondaryDomainController
         [string]$LogPath= "C:\Windows\NTDS"
     );
     Install-ADDSDomainController `
-    -DatabasePath "C:\Windows\NTDS" `
+    -DatabasePath $LogPath `
     -DomainMode "WinThreshold" `
     -DomainMode "WinThreshold" `
     -DomainName $DomainName `
@@ -141,11 +143,11 @@ function Update-DNSServers
 function Add-ReversLookupZone
 {
     # Create the reverse lookup zone for the subnet and make sure the pointer record of the first domain controller appears in that zone
-    $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet0' -and $_.AddressFamily -eq 'IPv4' } # Get ipconfig of the first network adapter
+    $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq '$InterfaceAlias' -and $_.AddressFamily -eq 'IPv4' } # Get ipconfig of the first network adapter
     $Subnet = Out-NetworkIpAddress -IpAddress $ipconfig.IPAddress -PrefixLength $ipconfig.PrefixLength; # Get the network part of the IP address
 
-    Add-DnsServerPrimaryZone -Name (Get-ReverseLookupZoneName -InterfaceAlias "Ethernet0" ) -NetworkID $Subnet -ReplicationScope "Domain" -DynamicUpdate "Secure";
-    Add-DnsServerResourceRecordPTR -Name $env:computername -PtrDomainName Get-ComputerFQDN -ZoneName ("" + (Get-ReverseLookupZoneName -InterfaceAlias "Ethernet0") +".")
+    Add-DnsServerPrimaryZone -Name (Get-ReverseLookupZoneName -InterfaceAlias "$InterfaceAlias" ) -NetworkID $Subnet -ReplicationScope "Domain" -DynamicUpdate "Secure";
+    Add-DnsServerResourceRecordPTR -Name $env:computername -PtrDomainName Get-ComputerFQDN -ZoneName ("" + (Get-ReverseLookupZoneName -InterfaceAlias "$InterfaceAlias") +".")
 } # Source: https://learn.microsoft.com/en-us/powershell/module/dnsserver/add-dnsserverprimaryzone?view=windowsserver2022-ps
 
 
@@ -161,7 +163,7 @@ function Update-DefaultFirstSiteName
     # Rename the 'default-first-site-name' to a meaningful name and add your subnet to it
     #$SiteName = Read-Host "Enter the site name";
     Set-ADReplicationSite -Identity "Default-First-Site-Name" -Name $SiteName; # Rename the default site
-    Add-ADReplicationSubnet -Site $SiteName -Name (Get-Subnet -InterfaceAlias "Ethernet0"); # Add the subnet of the first network adapter to the site
+    Add-ADReplicationSubnet -Site $SiteName -Name (Get-Subnet -InterfaceAlias "$InterfaceAlias"); # Add the subnet of the first network adapter to the site
 }
 
  function Enable-DHCCurrentSubnet
@@ -169,7 +171,7 @@ function Update-DefaultFirstSiteName
     try 
     {
         Start-Transaction;
-        $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq 'Ethernet0' -and $_.AddressFamily -eq 'IPv4' }; # Get ipconfig of the first network adapter
+        $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq '$InterfaceAlias' -and $_.AddressFamily -eq 'IPv4' }; # Get ipconfig of the first network adapter
         Add-DhcpServerInDC; # Authorize the DHCP server to serve DHCP requests in the subnet
         
         # Remove warning about the DHCP server not being authorized to serve DHCP requests in the subnet
@@ -177,11 +179,11 @@ function Update-DefaultFirstSiteName
 
         # Create IPv4 scope for the subnet (DHCP scope option)
         Add-DhcpServerv4Scope -Name (Read-Host "Enter Scope name") `
-        -StartRange (Get-FirstAddressRange -InterfaceAlias "Ethernet0") `
-        -EndRange (Get-LastAddressRange -InterfaceAlias "Ethernet0") `
+        -StartRange (Get-FirstAddressRange -InterfaceAlias "$InterfaceAlias") `
+        -EndRange (Get-LastAddressRange -InterfaceAlias "$InterfaceAlias") `
         -SubnetMask Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength `
         -State "Active";
-        Add-DhcpServer4ExcludeRange -ScopeId (Get-AddressInSubnet -InterfaceAlias "Ethernet0" -Place 0) -StartRange (Get-FirstAddressRange -InterfaceAlias "Ethernet0") -EndRange (Get-AddressInSubnet -InterfaceAlias "Ethernet0");
+        Add-DhcpServer4ExcludeRange -ScopeId (Get-AddressInSubnet -InterfaceAlias "$InterfaceAlias" -Place 0) -StartRange (Get-FirstAddressRange -InterfaceAlias "$InterfaceAlias") -EndRange (Get-AddressInSubnet -InterfaceAlias "$InterfaceAlias");
         Complete-Transaction;
     }
     catch 
@@ -190,7 +192,6 @@ function Update-DefaultFirstSiteName
         Undo-Transaction;
     }
  } # Source: https://learn.microsoft.com/en-us/powershell/module/dhcpserver/add-dhcpserverindc?view=windowsserver2022-ps
-
 
 function Add-DHCPOptions # Add DHCP options
 {
@@ -216,12 +217,7 @@ function Add-DHCPOptions # Add DHCP options
         $Option = $Options[$i];
         Set-DhcpServerv4OptionValue -OptionId $Option.Key -Value $Option.Value;
     }
-   
-        
-    #Set-DhcpServerv4OptionValue -OptionId 6 -Value (Read-Host "Enter the DNS servers (comma seperated)");
-    #Set-DhcpServerv4OptionValue -OptionId 15 -Value (Read-Host "Enter the domain name");
 }
-
 # ~ Functions ============================================================================================================
 function Out-ReversedString # Function to reverse a string
 {
@@ -240,31 +236,5 @@ function Out-ReversedString # Function to reverse a string
     | ForEach-Object {$_.value}) `
     -join '');    
 }
-
 # ========================================================================================================================
-Invoke-Command -ComputerName $ADController -ScriptBlock -Verbose `
-{
-    Add-Roles -Roles $Roles
-    Install-DomainController;
 
-}
-# reboot the server and wait for the server to come back online
-Write-Host "Restarting server..."
-Restart-Computer -ComputerName $ADController -Wait -For PowerShell -Timeout 300 -Delay 2; 
-# Source: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/restart-computer?view=powershell-7.3#example-6-restart-a-remote-computer-and-wait-for-powershell
-Write-Host "Server has restarted proceding with script...";
-
-
-Invoke-Command -ComputerName $ADController -ScriptBlock -Verbose `
-{
-    Update-DNSServers -DnsServers (Read-Host "Enter the DNS servers (comma seperated)");
-    Add-ReversLookupZone;
-    Update-DefaultFirstSiteName -SiteName (Read-Host "Enter new default-first-sitename");
-    Enable-DHCCurrentSubnet;
-    $DnsServers = (Read-Host "Enter the DNS servers (comma seperated)");
-    $DomainName = (Read-Host "Enter the domain name");
-    Add-DHCPOptions -Options @{6=$DnsServers; 15=$DomainName}
-
-}
-
-# Source hashtables: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_hash_tables?view=powershell-7.3
