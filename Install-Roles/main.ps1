@@ -1,3 +1,7 @@
+$DhcpOptions = @{
+    6 = "203.113.11.1","203.113.11.2";
+    15 = "intranet.mct.be"
+}
 <#
     .SYNOPSIS
     This script installs the roles on a Windows Server remotely
@@ -63,11 +67,11 @@ Invoke-Command -Session $targetSession -ScriptBlock {
     Set-Location $using:remotePath
     . ".\Install-Roles.ps1";
     . ".\Windows-Network-RelatedFunctions.ps1";
-    Update-DNSServers -DnsServers (Read-Host "Enter the DNS servers (comma seperated)");
-    Add-ReversLookupZone;
-    Update-DefaultFirstSiteName -SiteName (Read-Host "Enter new default-first-sitename");
-    Enable-DHCCurrentSubnet;
-    Add-DHCPOptions -Options @{6=(Read-Host "Enter the DNS servers (comma seperated)"); 15=(Read-Host "Enter the domain name")};
+    #Update-DNSServers -DnsServers (Read-Host "Enter the DNS servers (comma seperated)");
+    #Add-ReversLookupZone;
+    #Update-DefaultFirstSiteName -SiteName (Read-Host "Enter new default-first-sitename");
+    Enable-DHCPCurrentSubnet;
+    Add-DHCPOptions -Options $using:DhcpOptions;
 
     # Source hashtables: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_hash_tables?view=powershell-7.3
 }

@@ -305,12 +305,16 @@ function Update-DefaultFirstSiteName
     New-ADReplicationSubnet -Site $SiteName -Name (Get-Subnet -InterfaceIndex $InterfaceIndex); # Add the subnet of the first network adapter to the site
 }
 
- function Enable-DHCCurrentSubnet
+ function Enable-DHCPCurrentSubnet
  {
     try 
     {
+        $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -notlike '*Loopback*' } # Get ipconfig of the first network adapter
+    
         Start-Transaction;
-        $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAlias -eq '$InterfaceIndex' -and $_.AddressFamily -eq 'IPv4' }; # Get ipconfig of the first network adapter
+        $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
+        $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' }; # Get ipconfig of the first network adapter
+        $SubnetMask = Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength; # Get the subnet mask of the first network adapter
         Add-DhcpServerInDC; # Authorize the DHCP server to serve DHCP requests in the subnet
         
         # Remove warning about the DHCP server not being authorized to serve DHCP requests in the subnet
@@ -320,10 +324,11 @@ function Update-DefaultFirstSiteName
         Add-DhcpServerv4Scope -Name (Read-Host "Enter Scope name") `
         -StartRange (Get-FirstAddressRange -InterfaceIndex "$InterfaceIndex") `
         -EndRange (Get-LastAddressRange -InterfaceIndex "$InterfaceIndex") `
-        -SubnetMask Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength `
+        -SubnetMask (Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength) `
         -State "Active";
-        Add-DhcpServer4ExcludeRange -ScopeId (Get-AddressInSubnet -InterfaceIndex $InterfaceIndex -Place 0) -StartRange (Get-FirstAddressRange -InterfaceIndex $InterfaceIndex) -EndRange (Get-AddressInSubnet -InterfaceIndex "$InterfaceIndex");
-        Set-DhcpServerv4OptionValue -ScopeId (Get-AddressInSubnet -InterfaceIndex $InterfaceIndex -Place 0) -Router (Get-LastAddressRange -InterfaceIndex $InterfaceIndex);
+        Add-DhcpServerv4ExclusionRange -ScopeId (Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -SubnetMask $SubnetMask) -StartRange (Get-FirstAddressRange -InterfaceIndex $InterfaceIndex) -EndRange (Get-AddressInSubnet -InterfaceIndex "$InterfaceIndex" -Place 10);
+        Add-DhcpServerv4ExclusionRange -ScopeId (Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -SubnetMask $SubnetMask) -StartRange (Get-LastAddressRange -InterfaceIndex $InterfaceIndex) -EndRange (Get-LastAddressRange -InterfaceIndex $InterfaceIndex);
+        Set-DhcpServerv4OptionValue -ScopeId (Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -SubnetMask $SubnetMask) -Router (Get-LastAddressRange -InterfaceIndex $InterfaceIndex);
         Complete-Transaction;
     }
     catch 
@@ -346,7 +351,8 @@ function Add-DHCPOptions # Add DHCP options
         The DHCP options
 
         .EXAMPLE
-        Add-DHCPOptions -Options @{option1="value1";option2="value2"}
+        Add-DHCPOptions -Options @{6 = "203.113.11.1","203.113.11.2"; 15 = "intranet.mct.be" }
+}
     #>
 
     param(
@@ -360,15 +366,15 @@ function Add-DHCPOptions # Add DHCP options
         return;
     }
 
-    for($i = 0; $i -lt $Options.Count; $i++)
+    if (15 -notin $Options.Keys -or 6 -notin $Options.Keys) {
+        Write-Error "The options 6, 15 are required";
+    }
+    else 
     {
-        if ($Option.ContainsKey({6,15,44}))
+        foreach ($option in $Options.GetEnumerator()) 
         {
-            Write-Error "The options 6, 15 required";
-            return;
+            Set-DhcpServerv4OptionValue -OptionId $option.Key -Value $option.Value;
         }
-        $Option = $Options[$i];
-        Set-DhcpServerv4OptionValue -OptionId $Option.Key -Value $Option.Value;
     }
 }
 # ~ Functions ============================================================================================================

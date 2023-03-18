@@ -1,6 +1,6 @@
-
-function Out-NetworkIpAddress # Function to get the network part of an IP address - Took inpiration from bitoperations Sensor & Interfacing
-{
+# TO DO: Ensure that you can also calulate the network address from smaller networks (e.g. /25 - /30)
+function Out-NetworkIpAddress # Function to calculate the network address of an IP address and subnet mask 
+{ 
     param(
         [parameter(Mandatory=$True,ValueFromPipeline=$True)]
         [ValidateNotNullOrEmpty()]
@@ -10,23 +10,23 @@ function Out-NetworkIpAddress # Function to get the network part of an IP addres
         [string[]]$SubnetMask,
         [parameter(Mandatory=$False,ValueFromPipeline=$True)]
         [ValidateNotNullOrEmpty()]
-        [int]$PrefixLength=24
+        [int]$PrefixLength=0
     );
 
-    if($null -ne $PrefixLength)
+    if(0 -ne $PrefixLength)
     {
-        $SubnetMask = Convert-PrefixToSubnetMask -PrefixLength $ipconfig.PrefixLength;
+        $SubnetMask = Convert-PrefixToSubnetMask -PrefixLength $PrefixLength;
     }
 
-    $IpBytes = [System.Net.IPAddress]::Parse($ipAddress).GetAddressBytes() # returns an array of bytes representing the IP address
-    $MaskBytes = [System.Net.IPAddress]::Parse($subNetMask).GetAddressBytes() # returns an array of bytes representing the subnet mask
+    $IpBytes = [System.Net.IPAddress]::Parse($IpAddress).GetAddressBytes(); # Convert the IP address to bytes
+    $MaskBytes = [System.Net.IPAddress]::Parse($SubnetMask).GetAddressBytes(); # Convert the subnet mask to bytes
 
-    $NetworkBytes = for($i = 0; $i -lt $IpBytes.Length; $i++) # for each byte in the IP address
+    $NetworkBytes = for($i = 0; $i -lt $IpBytes.Length; $i++) 
     {
-        $IpBytes[$i] -band $MaskBytes[$i] # bitwise AND the IP address byte with the subnet mask byte
+        $IpBytes[$i] -band $MaskBytes[$i];
     }
 
-    return ([System.Net.IPAddress]::new($NetworkBytes)).ToString() # convert the array of bytes to an IP address and return it as a string
+    return ([System.Net.IPAddress]::new($NetworkBytes)).ToString();
 }
 
 
@@ -107,11 +107,22 @@ function Get-BroadcastAddress # Retrieve the broadcast address of an interface
         [parameter(Mandatory=$True, ValueFromPipeline=$True)]
         [int]$InterfaceIndex
     )
-    $IpAddress = Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object {$_.AddressFamily -eq "IPv4"};
-    $SubnetMask = Convert-PrefixToSubnetMask -PrefixLength $IpAddress.PrefixLength;
-    $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress.IPAddress -SubnetMask $SubnetMask;
-    return ([IpAddress]$NetworkAddress).IPAddress -bor -bnot ([IpAddress]$SubnetMask).IPAddress;
+    $IpAddress = Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object {$_.AddressFamily -eq "IPv4"}; # Get the IP address config of the interface
+    $SubnetMask = Convert-PrefixToSubnetMask -PrefixLength $IpAddress.PrefixLength; # Convert the prefix length to a subnet mask
+    $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress.IPAddress -SubnetMask $SubnetMask; # Get the network address of the interface
+    $NetworkAddressBytes = [System.Net.IPAddress]::Parse($NetworkAddress).GetAddressBytes();
+    
+    # Perform a bitwise OR operation on the network address and the inverse of the subnet mask
+    $BroadcastAddressBytes = for($i = 0; $i -lt $NetworkAddressBytes.Length; $i++) # Loop through each byte of the network address
+    {
+        $NetworkAddressBytes[$i] -bor (255 - $SubnetMask.Split('.')[($i)]);
+    }
+
+    return ([System.Net.IPAddress]::new($BroadcastAddressBytes)).ToString(); # Convert the broadcast address bytes to an IP address and return the result
 }
+
+
+
 
 function Get-FirstAddressRange # Retrieve the first address of the range of usable addresses of an interface
 {
@@ -119,8 +130,13 @@ function Get-FirstAddressRange # Retrieve the first address of the range of usab
         [parameter(Mandatory=$True, ValueFromPipeline=$True)]
         [int]$InterfaceIndex
     )
-    $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress.IPAddress -SubnetMask $SubnetMask; # Retrieve the network address of the interface
-    return ([IpAddress]($NetworkAddress + 1)).IPAddress # Return the first address of the range of usable addresses
+    $IpAddress = Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object {$_.AddressFamily -eq "IPv4"}; # Retrieve the IP address of the interface
+   
+    $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress.IPAddress -PrefixLength $IpAddress.PrefixLength; # Retrieve the network address of the interface
+    # Increment the last byte of the network address by 1
+    $NetworkAddressBytes = [System.Net.IPAddress]::Parse($NetworkAddress).GetAddressBytes(); # Convert the network address to bytes
+    $NetworkAddressBytes[3] += 1; # Increment the last byte of the network address by 1 (the first address of the range of usable addresses)
+    return ([System.Net.IPAddress]::new($NetworkAddressBytes)).ToString(); # Convert the network address bytes to an IP address
 }
 
 function Get-LastAddressRange # Retrieve the last address of the range of usable addresses of an interface
@@ -130,22 +146,48 @@ function Get-LastAddressRange # Retrieve the last address of the range of usable
         [int]$InterfaceIndex
     )
     $BroadcastAddress = Get-BroadcastAddress -InterfaceIndex $InterfaceIndex; # Retrieve the broadcast address of the interface
-    return ([IpAddress]($BroadcastAddress - 1)).IPAddress # Return the last address of the range of usable addresses
+    $BroadcastAddressBytes = [System.Net.IPAddress]::Parse($BroadcastAddress).GetAddressBytes(); # Convert the broadcast address to bytes
+    $BroadcastAddressBytes[3] -= 1; # Decrement the last byte of the broadcast address by 1 (the last address of the range of usable addresses)
+    return ([System.Net.IPAddress]::new($BroadcastAddressBytes)).ToString(); # Convert the broadcast address bytes to an IP address
 }
-
 function Get-AddressInSubnet
 {
     param(
         [parameter(Mandatory=$True, ValueFromPipeline=$True)]
-        [string]$IpAddress,
-        [parameter(Mandatory=$True, ValueFromPipeline=$True)]
-        [string]$SubnetMask,
+        [int]$InterfaceIndex,
         [parameter(Mandatory=$False, ValueFromPipeline=$True)]
-        [int]$Place
+        [int]$Place=0
     );
 
-    $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress -SubnetMask $SubnetMask; # Retrieve the network address
-    return ([IpAddress]($NetworkAddress + $Place)).IPAddress; # Return the address at the specified place   
+    try {
+        $IpAddress = Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object {$_.AddressFamily -eq "IPv4"}; # Retrieve the IP address of the interface
+   
+        $NetworkAddress = Out-NetworkIpAddress -IpAddress $IpAddress.IPAddress -PrefixLength $IpAddress.PrefixLength; # Retrieve the network address of the interface
+        # Increment the last byte of the network address by place
+        $NetworkAddressBytes = [System.Net.IPAddress]::Parse($NetworkAddress).GetAddressBytes(); # Convert the network address to bytes
+        $NetworkAddressBytes[3] += $Place; # Increment the last byte of the network address by place
+
+        $Result = [System.Net.IPAddress]::new($NetworkAddressBytes).ToString(); # Convert the network address bytes to an IP address
+
+        if($Result -eq (Get-BroadcastAddress -InterfaceIndex $InterfaceIndex)) # Check if is the broadcast address
+        {
+            Write-Error "Error: This address is the broadcast address, not a usable address";
+        }
+        elseif($Result -eq (Out-NetworkIpAddress -IpAddress $IpAddress.IpAddress -PrefixLength $IpAddress.PrefixLength)) # Check if is the Network address
+        {
+            Write-Error "Error: This address is the network address, not a usable address";
+        }
+        else
+        {
+            return $Result;
+        }
+        
+       
+    }
+    catch {
+        Write-Error "Error: $($_.Exception.Message)";
+    }
+   
 }
 
 # TO DO: CHECK IF PROMOTED TO DC WIT WMI OBJECT
