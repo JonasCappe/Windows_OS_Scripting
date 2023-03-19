@@ -1,0 +1,21 @@
+FirstName;Lastname;Department;Password;JobTitle;Company;GroupName
+Leon;David;Board;Howest123#;President;ABC;GG-BOARD
+Mark;Twix;Board;Howest123#;Vice President - Finance;ABC;GG-BOARD,GG-FINANCE
+Stephen;George;Board;Howest123#;Vice President HR;ABC;GG-BOARD,GG-HR
+Nathalie;John;Board;Howest123#;Vice President - Marketing;ABC;GG-BOARD,GG-MARKETING
+Addison;Soans;Board;Howest123#;Vice President - Projects;ABC;GG-BOARD,GG-PROJECT-ADMINS
+Mark;Davis;Board;Howest123#;Vice President - Engineering;ABC;GG-BOARD,GG-Engineering
+Brent;Howson;Board;Howest123#;Vice President - Manufacturing;ABC;GG-BOARD,GG-MANUFACTURING
+Gwendy;;Project-admins;Howest123#;Project Admin;ABC;GG-PROJECT-ADMINS
+Cristo;;Engineering;Howest123#;System Engineering;ABC;GG-ENGINEERING
+Danny;;Engineering;Howest123#;Electronic Engineering;ABC;GG-ENGINEERING
+Mark;;Engineering;Howest123#;Software Engineering;ABC;GG-ENGINEERING
+Holmen;;Engineering;Howest123#;Mechanical Engineering;ABC;GG-ENGINEERING
+Kathen;;Manufacturing;Howest123#;Assembly Manager;ABC;GG-MANUFACTURING
+Drahman;;Manufacturing;Howest123#;Testing Manager;ABC;GG-MANUFACTURING
+Brown;;Manufacturing;Howest123#;Production Manager;ABC;GG-MANUFACTURING
+Ahmed;Sadak;Projects;Howest123#;Project Manager;ABC;GG-PROJECTS,GG-PROJECTA
+Amenthi;Mohan;Projects;Howest123#;Project Manager;ABC;GG-PROJECTS,GG-PROJECTB
+Bridget;Hiagley;Projects;Howest123#;Project Manager;ABC;GG-PROJECTS,GG-PROJECTB
+
+

@@ -1,0 +1,12 @@
+Name;Path
+intranet;
+!Computers;OU=intranet
+Board;OU=intranet
+Engineering;OU=intranet
+Finance;OU=intranet
+Hr;OU=intranet
+Manufacturing;OU=intranet
+Marketing;OU=intranet
+Test;OU=intranet
+Projects;OU=intranet
+ProjectAdmins;OU=Projects,OU=intranet
