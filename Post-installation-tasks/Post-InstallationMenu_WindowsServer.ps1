@@ -2,9 +2,7 @@
 
 # TODO: REFACTOR CODE: SPLITS THINS MORE IN THERE OWN SCOPES SRP!
 
-# ~ GLOBAL VARIABLES
-$InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex);  # Get the interface index of the network adapter that is connected to the network
-$ConnectionUrl = "https://www.howest.be"; # URL to test internet connectivity
+
 
 # CHECK IF SCRIPT IS RUNNED WITH ELEVATED PERMISSIONS IF NOT RESTART WITH ELEVATED PERMISSUONS
 <#$admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -30,7 +28,7 @@ function Show-IsServerCore
 # CHECK IF STATIC IP IS SET (DHCP IS Disabled = Static IP)
 function Show-StaticIpSet
 {
-    $dhcpEnabled=(Get-NetIPInterface -ifAlias $InterfaceIndex | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.Dhcp}); # Get DHCP status
+    $dhcpEnabled=(Get-NetIPInterface -InterfaceIndex $InterfaceIndex | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.Dhcp}); # Get DHCP status
     $StaticIpSet=(Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.IPAddress}); # Get IP Address
     
     if($dhcpEnabled  -like "D*" -and $StaticIpSet) # Check if DHCP is disabled 
@@ -310,7 +308,7 @@ function Show-IEEnhancedSecurityMenu
                     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
                     Write-Host "Disabled IE Enhanced Security for Administrators"
 
-                    Restart-NetAdapter -InterfaceIndex "Ethernet0" # Restart network adapter to apply changes
+                    Restart-NetAdapter -InterfaceIndex $InterfaceIndex # Restart network adapter to apply changes
                 }
                 catch {
                     Write-Error "Could not disable IE Enhanced Security for administrators: $_"
@@ -324,7 +322,7 @@ function Show-IEEnhancedSecurityMenu
                     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A8-37EF-4b3f-8CFC-4F3A74704073}' -Name 'IsInstalled' -Value 0
                     Write-Host "Disabled IE Enhanced Security for Users"
 
-                    Restart-NetAdapter -InterfaceIndex "Ethernet0" # Restart network adapter to apply changes
+                    Restart-NetAdapter -InterfaceIndex $InterfaceIndex # Restart network adapter to apply changes
                 }
                 catch {
                     Write-Error "Could not disable IE Enhanced Security for users: $_"
@@ -342,7 +340,7 @@ function Show-IEEnhancedSecurityMenu
 
                     Write-Host "Disabled IE Enhanced Security for Everyone"
 
-                    Restart-NetAdapter -InterfaceIndex "Ethernet0" # Restart network adapter to apply changes
+                    Restart-NetAdapter -InterfaceIndex $InterfaceIndex # Restart network adapter to apply changes
                 }
                 catch {
                     Write-Error "Could not disable IE Enhanced Security for everyone: $_"

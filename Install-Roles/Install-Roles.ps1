@@ -263,7 +263,7 @@ function Add-ReversLookupZone
     # Get the interface index of the network adapter that is connected to the network
     $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
     # Create the reverse lookup zone for the subnet and make sure the pointer record of the first domain controller appears in that zone
-    $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -notlike '*Loopback*' } # Get ipconfig of the first network adapter
+    $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -notlike '*Loopback*' }; # Get ipconfig of the first network adapter
     
     $Subnet = Out-NetworkIpAddress -IpAddress $Ipconfig.IpAddress -PrefixLength ($Ipconfig.PrefixLength); # Get the network part of the IP address
    
@@ -309,7 +309,7 @@ function Update-DefaultFirstSiteName
  {
     try 
     {
-        $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceAIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -notlike '*Loopback*' } # Get ipconfig of the first network adapter
+        $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -notlike '*Loopback*' } # Get ipconfig of the first network adapter
     
         Start-Transaction;
         $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
