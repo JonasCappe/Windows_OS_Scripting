@@ -1,3 +1,4 @@
+
 function Add-Shares
 {
     <#
@@ -139,3 +140,71 @@ function Add-UsersInAD
         }
     }    
 } # Based on NWB SCRIPT - Supplemented by info from https://learn.microsoft.com/en-us/powershell/module/activedirectory/new-aduser?view=windowsserver2022-ps
+
+function Add-GroupsInAD
+{
+    param
+    (
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$SourceFile,
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$DistinguishedPath
+
+    );
+
+    # Create Groups if they not exist
+    $Groups = Import-Csv -Delimiter ";" -Path $SourceFile; # Import Groups from CSV file
+
+    foreach ($Group in $Groups)
+    {
+        $ouPath = ($Group.Path -replace ";", ",") + "," + $DistinguishedPath; # format path to be used in New-ADOrganizationalUnit
+
+        #Check if exists
+        if (Get-ADGroup -Filter { DistinguishedName -like $ouPath } -ErrorAction SilentlyContinue) # If Group exists, skip
+        {
+            Write-Host "Group '$($Group.Name)' already exists in '$($Group.Path)'" -ForegroundColor Yellow;
+        }
+        else # If Group doesn't exist, create it
+        {
+            Write-Host "Creating Group '$($Group.Name)' in '$($Group.Path)'" -ForegroundColor Green;
+            New-ADGroup -Name $Group.Name -Path $ouPath -GroupScope $Group.Scope -GroupCategory $Group.Category;
+            Add-ADGroupMember -Identity $Group.MemberOf -Members $Group.Name;    
+        }    
+    }
+
+}
+
+
+function Add-OrganizationalUnits
+{
+    param
+    (
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$SourceFile,
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$DistinguishedPath
+
+    );
+    $OrganizationalUnits = Import-Csv -Delimiter ";" -Path $SourceFile; # Import Organizational Units from CSV file
+
+    # Create Organizational Units if they don't exist
+    foreach ($OrganizationalUnit in $OrganizationalUnits)
+    {
+        $ouPath = ($OrganizationalUnit.Path -replace ";", ",") + "," + $DistinguishedPath; # format path to be used in New-ADOrganizationalUnit
+
+        #Check if exists
+        if (Get-ADOrganizationalUnit -Filter { DistinguishedName -like $ouPath } -ErrorAction SilentlyContinue) # If Organizational Unit exists, skip
+        {
+            Write-Host "Organizational Unit '$($OrganizationalUnit.Name)' already exists in '$($OrganizationalUnit.Path)'" -ForegroundColor Yellow;
+        }
+        else # If Organizational Unit doesn't exist, create it
+        {
+            Write-Host "Creating Organizational Unit '$($OrganizationalUnit.Name)' in '$($OrganizationalUnit.Path)'" -ForegroundColor Green;
+            New-ADOrganizationalUnit -Name $OrganizationalUnit.Name -Path $ouPath; 
+        }    
+    }
+}
