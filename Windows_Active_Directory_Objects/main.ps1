@@ -131,4 +131,6 @@ foreach ($User in $Users)
 
     New-ADUser -Name $Displayname -UserPrincipalName $UPNUser -GivenName $Givenname -Surname $Surname -Displayname $Displayname -EmailAddress $UPNUser -Title $Title
     -AccountPassword (ConvertTo-SecureString $Password -AsPlainText -Force) -Enabled $true -ChangePasswordAtLogon $true -PasswordNeverExpires -Path $Path;
+
+    Add-ADGroupMember $GroupName $UPNUser;
 }
