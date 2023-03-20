@@ -8,6 +8,14 @@ $ConnectionUrl = "https://www.howest.be"; # URL to test internet connectivity
 # CHECK OF SERVER IS CORE VERSION
 function Show-IsServerCore
 {
+    <#
+        .SYNOPSIS
+        Check if the server is a ServerCore version
+        .DESCRIPTION
+        Check if the server is a ServerCore version
+        .OUTPUTS
+        Boolean - True if ServerCore, False if not
+    #>
     $osServer = (Get-ComputerInfo | Select-Object OsServerLevel); # Get OS Server Level
 
     if($OsServer -eq "ServerCore") # Check if OS Server Level is ServerCore
@@ -20,6 +28,14 @@ function Show-IsServerCore
 # CHECK IF STATIC IP IS SET (DHCP IS Disabled = Static IP)
 function Show-StaticIpSet
 {
+    <#
+        .SYNOPSIS
+        Check if the static IP is set
+        .DESCRIPTION
+        Check if the static IP is set
+        .OUTPUTS
+        Boolean - True if static IP is set, False if not
+    #>
     $dhcpEnabled=(Get-NetIPInterface -InterfaceIndex $InterfaceIndex | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.Dhcp}); # Get DHCP status
     $StaticIpSet=(Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object AddressFamily -eq "IPv4" | ForEach-Object {$_.IPAddress}); # Get IP Address
     
@@ -33,6 +49,14 @@ function Show-StaticIpSet
 # CHECK DNS SERVER(s) IS SET
 function Show-DnsServersSet
 {
+    <#
+        .SYNOPSIS
+        Check if the DNS server(s) set
+        .DESCRIPTION
+        Check if the DNS server(s) is set
+        .OUTPUTS
+        Boolean - True if DNS server(s) set, False if not
+    #>
     $DnsServersSet=@(Get-DnsClientServerAddress -AddressFamily IPv4 -InterfaceIndex $InterfaceIndex); # Get DNS Servers
 
     if($null -ne ($DnsServersSet | ForEach-Object {$_.ServerAddresses})) # Check if DNS Servers ar not null
@@ -45,6 +69,14 @@ function Show-DnsServersSet
 # CHECK IF DEFAULT GATEWAY HAS BEEN SET BY LOOKING AT THE ROUTING TABLE
 function Show-DefaultGatewaySet
 {
+    <#
+        .SYNOPSIS
+        Check if the default gateway is set
+        .DESCRIPTION
+        Check if the default gateway is set
+        .OUTPUTS
+        Boolean - True if default gateway is set, False if not
+    #>
     if($null -eq (Get-NetRoute -AddressFamily IPv4 -DestinationPrefix 0.0.0.0/0 | Where-Object {$_.RouteMetric -ne 0})) # Check Default Gateway settings
     {
         return $true;
@@ -55,6 +87,12 @@ function Show-DefaultGatewaySet
 # CHECK IF INTERNET IS REACHABLE (connectivity + nameresolution)
 function Show-InternetIsReachable
 {
+    <#
+        .SYNOPSIS
+        Check if the internet is reachable
+        .DESCRIPTION
+        Check if the internet is reachable
+    #>
     try {
         Invoke-WebRequest -Uri $ConnectionUrl -UseBasicParsing -ErrorAction Stop | Out-Null;
         Write-Host "Internet access is available."
