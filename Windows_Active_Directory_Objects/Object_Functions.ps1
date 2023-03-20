@@ -143,6 +143,23 @@ function Add-UsersInAD
 
 function Add-GroupsInAD
 {
+    <#
+        .SYNOPSIS
+        Add groups to Active Directory from a CSV file.
+        .DESCRIPTION
+        Add groups to Active Directory from a CSV file.
+        .PARAMETER SourceFile
+        The path to the CSV file containing the groups to add.
+        .PARAMETER DistinguishedPath
+        The distinguished path of the DC to add the groups to.
+        .EXAMPLE
+        Add-GroupsInAD -SourceFile ".\Groups.csv" -DistinguishedPath "DC=intranet,DC=contoso,DC=com";
+        .NOTES
+        CSV file should be formatted as follows:
+        GroupName;Scope;Category;MemberOf;Path
+        GG-BOARD;Global;Security;DLG-BOARD;OU=Board,OU=intranet
+        DLG-MARKETING;DomainLocal;Security;;OU=Marketing,OU=intranet
+    #>
     param
     (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
@@ -179,6 +196,22 @@ function Add-GroupsInAD
 
 function Add-OrganizationalUnits
 {
+    <#
+        .SYNOPSIS
+        Add Organizational Units to Active Directory from a CSV file.
+        .DESCRIPTION
+        Add Organizational Units to Active Directory from a CSV file.
+        .PARAMETER SourceFile
+        The path to the CSV file containing the Organizational Units to add.
+        .PARAMETER DistinguishedPath
+        The distinguished path of the DC to add the Organizational Units to.
+        .EXAMPLE
+        Add-OrganizationalUnits -SourceFile ".\OrganizationalUnits.csv" -DistinguishedPath "DC=intranet,DC=contoso,DC=com";
+        .NOTES
+        CSV file should be formatted as follows:
+        Name;Path
+        Projects;OU=intranet
+    #>
     param
     (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
