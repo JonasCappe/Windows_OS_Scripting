@@ -1,0 +1,5 @@
+Name;Path;FolderPermissions;SecurityPrinicpal;NtfsPermission
+Home$;C:\homes;Everyone;Domain Admins;Full Control
+Home$;C:\homes;Everyone;Authenticated Users;ReadAndExecute,Synchronize
+Profiles$;C:\profiles;Everyone;Domain Admins;Full Control
+Profiles$;C:\profiles;Everyone;Authenticated Users;ReadAndExecute,Synchronize
