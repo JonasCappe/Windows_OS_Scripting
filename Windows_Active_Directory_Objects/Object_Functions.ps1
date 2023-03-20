@@ -11,6 +11,12 @@ function Add-Shares
         The name or IP address of the server to add the shares to.
         .EXAMPLE
         Add-Shares -SourceFile ".\SharesFileServer.csv" -DestinationServer "FileServer";
+        .NOTES
+        CSV file should be formatted as follows:
+        Name;Path;FolderPermissions;NtfsPermission
+        Diffrerent permissions can be added by separating them with a comma.
+        Home$;C:\homes;Everyone;Domain Admins:Full Control,Authenticated Users:ReadAndExecute|SynchronizeProfiles$;C:\profiles;Everyone;Domain Admins:Full Control,Authenticated Users:ReadAndExecute|Synchronize
+
     #>
     param
     (
@@ -25,7 +31,7 @@ function Add-Shares
     $ServerSession = New-PSSession -ComputerName $DestinationServer -Credential  (Get-Credential -Message "Enter credentials for $($DestinationServer)" -UserName "Administrator");
 
     # Create the share containing the users home folders. (Tip:New-SmbShare, Get-Acl, SetAccessRuleProtection, Set-Acl, ...)
-    $Shares = Import-Csv -Delimiter ";" -Path ".\MainShares.csv"; # Import Shares from CSV file
+    $Shares = Import-Csv -Delimiter ";" -Path $SourceFile; # Import Shares from CSV file
     foreach($Share in $Shares)
     {
         if (-not (Invoke-Command -ScriptBlock { Test-Path -Path $args[0] } -ArgumentList $Share.Path -Session $ServerSession))
@@ -37,7 +43,7 @@ function Add-Shares
         {
             New-SmbShare -Name $Share.Name -Path $Share.Path -FullAccess $Share.FolderPermissions -CimSession $ServerSession;
         }
-            else
+        else
         {
             Write-Host "Share $Share.Name already exists";
         }
@@ -79,6 +85,9 @@ function Add-UsersInAD
     The distinguished path of the DC to add the users to.
     .EXAMPLE
     Add-UsersInAD -SourceFile ".\Users.csv" -DestinationServer "DC01" -DistinguishedPath "DC=intranet,DC=contoso,DC=com";
+    .NOTES
+    CSV file should be formatted as follows:
+    FirstName;Lastname;Department;Password;JobTitle;Company;GroupName
     #>
     param
     (
@@ -95,7 +104,7 @@ function Add-UsersInAD
     );
 
     $ServerSession = New-PSSession -ComputerName $DestinationServer -Credential  (Get-Credential -Message "Enter credentials for $($DestinationServer)" -UserName "Administrator");
-    $Users = Import-Csv -Delimiter ";" -Path "C:\temp\Users.csv"; # Import Users from CSV file
+    $Users = Import-Csv -Delimiter ";" -Path $SourceFile; # Import Users from CSV file
     Invoke-Command -Session $ServerSession -ScriptBlock { 
         foreach ($User in $using:Users) 
         {
@@ -128,6 +137,5 @@ function Add-UsersInAD
 
             Add-ADGroupMember $GroupName $DistinguishedName;
         }
-    }
-    
+    }    
 } # Based on NWB SCRIPT - Supplemented by info from https://learn.microsoft.com/en-us/powershell/module/activedirectory/new-aduser?view=windowsserver2022-ps
