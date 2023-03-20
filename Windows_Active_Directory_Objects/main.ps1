@@ -12,6 +12,7 @@ $Infrastructure = @(
         IP = "203.113.11.3"
     }
 );
+$UPN = "mct.be"
 # ~ PrimaryDomainController ====================================================================================================
 $PrimaryDomainControllerSession = New-PSSession -ComputerName $Infrastructure[0].Name -Credential  (Get-Credential -Message "Enter credentials for $($Infrastructure[0].Name)" -UserName "Administrator");
 
@@ -27,11 +28,10 @@ $MemberServerSession = New-PSSession -ComputerName $Infrastructure[2].Name -Cred
 # Create the share containing the users home folders. (Tip:New-SmbShare, Get-Acl, SetAccessRuleProtection, Set-Acl, ...)
 New-SmbShare -Name "Homes$" -Path "C:\homes" -FullAccess "Everyone" -CimSession $MemberServerSession;
 
-
 $ACL = Get-Acl -Path \\$($Infrastructure[2].Name)\Homes$; # Get ACL of share
 $ACL.SetAccessRuleProtection($true, $false); # Disable inheritance
-
 $ACL.Access | ForEach-Object { $ACL.RemoveAccessRule($_) } # Remove all access rules
+
 
 $AdminPermission = New-Object System.Security.AccessControl.FileSystemAccessRule("Domain Admins", "FullControl", "Allow"); # Create new access rule for Domain Admins
 $AuthUsersPermission = New-Object System.Security.AccessControl.FileSystemAccessRule("Authenticated Users", "ReadAndExecute, Synchronize", "Allow"); # Create new access rule for Authenticated Users
@@ -41,7 +41,13 @@ $ACL.AddAccessRule($AdminPermission);
 $ACL.AddAccessRule($AuthUsersPermission);
 
 Set-Acl -Path \\$($Infrastructure[2].Name)\Homes$ -AclObject $ACL; # Set ACL of share
-
+<#
+    Sources: 
+    - https://docs.microsoft.com/en-us/powershell/module/smbshare/new-smbshare?view=win10-ps
+    - https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-acl?view=powershell-7.1
+    - https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-acl?view=powershell-7.1
+    - https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-accessruleprotection?view=powershell-7.1
+#>
 # ~ SecondaryDomainController =================================================================================================
 $SecondaryDomainControllerSession = New-PSSession -ComputerName $Infrastructure[1].Name -Credential  (Get-Credential -Message "Enter credentials for $($Infrastructure[1].Name)" -UserName "Administrator");
 
@@ -64,22 +70,9 @@ $ACL.AddAccessRule($AuthUsersPermission);
 Set-Acl -Path \\$($Infrastructure[1].Name)\Profiles$ -AclObject $ACL; # Set ACL of share
 
 
-# ~ Domain ======================================================================================================================
-
-$UPN = "mct.be";
-$CompanyName = "ABC";
-$CompanyOUPath = "OU=$companyName,DC=contoso,DC=com"
-
-
-
-
-
+# ~ Organizatinal Units ======================================================================================================================
 $OrganizationalUnits = Import-Csv -Delimiter ";" -Path ".\OrganizationalUnits.csv"; # Import Organizational Units from CSV file
 $DC = ((Get-ADForest | Select-Object -ExpandProperty PartitionsContainer).Split(',') | Where-Object { $_ -like "DC=*" }) -join ",";
-
-
-
-
 
 # Create Organizational Units if they don't exist
 foreach ($OrganizationalUnit in $OrganizationalUnits)
@@ -98,7 +91,7 @@ foreach ($OrganizationalUnit in $OrganizationalUnits)
     }    
 }
 
-#Create Groups if they not exist
+# Create Groups if they not exist
 $Groups = Import-Csv -Delimiter ";" -Path ".\Groups.csv"; # Import Groups from CSV file
 
 foreach ($Group in $Groups)
@@ -114,32 +107,28 @@ foreach ($Group in $Groups)
     {
         Write-Host "Creating Group '$($Group.Name)' in '$($Group.Path)'" -ForegroundColor Green;
         New-ADGroup -Name $Group.Name -Path $ouPath -GroupScope $Group.Scope -GroupCategory $Group.Category;
+        Add-ADGroupMember -Identity $Group.MemberOf -Members $Group.Name;    
     }    
 }
 
-$Users = Import-Csv -Delimiter ';' -Path L:\Users.csv
+
+$Users = Import-Csv -Delimiter ";" -Path "C:\temp\Users.csv";
 
 foreach ($User in $Users)
 {
-    $Surname = $User.Surname
-    $Givenname = $User.Givenname
+    $Surname = $User.Lastname;
+    $Givenname = $User.Firstname;
 
-    $Displayname = $Givenname + " " + $Surname
+    $Displayname = $Givenname + "." + $Surname;
 
-    Read-Host 'Geef Domain op' $Domein
-    $UPN = $Displayname.Substring(0,1) + $Surname + '@' + $Domein
+    $UPNUser = $Displayname+$UPN;
 
-
-    $StreetAddress = $User.StreetAddres
-    $City = $User.City
-    $Title = $User.Title
+    $Title = $User.JobTitle
     $Password = $User.Password
-    $Country = $User.Country
-    $Phonenumber = $User.TelephoneNumber
     $Department = $User.Department
-    $Path = "OU=" + $Department + ",OU=$OU,DC=$DC,DC=$SUFFIX"
+    $Path = "OU=" + $Department + ",OU=intranet,$DC"
 
 
-    New-ADUser -Name $Displayname -UserPrincipalName $UPN -GivenName $Givenname -Surname $Surname -Displayname $Displayname -EmailAddress $UPN -StreetAddress $StreetAddress -City $City -Title $Title
-    -AccountPassword (ConvertTo-SecureString $Password -AsPlainText -Force) -Enabled $true -ChangePasswordAtLogon $true -PasswordNeverExpires $true -Country $Country -Path $Path -OfficePhone $Phonenumber
+    New-ADUser -Name $Displayname -UserPrincipalName $UPNUser -GivenName $Givenname -Surname $Surname -Displayname $Displayname -EmailAddress $UPNUser -Title $Title
+    -AccountPassword (ConvertTo-SecureString $Password -AsPlainText -Force) -Enabled $true -ChangePasswordAtLogon $true -PasswordNeverExpires -Path $Path;
 }
