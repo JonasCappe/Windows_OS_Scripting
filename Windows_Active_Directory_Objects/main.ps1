@@ -28,6 +28,9 @@ Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
 Add-Shares -SourceFile ".\SharesDc2.csv" -DestinationServer $Infrastructure[1].Name; # Add shares to DC2
 Add-Shares -SourceFile ".\SharesFileServer.csv" -DestinationServer $Infrastructure[2].Name; # Add shares to FileServer
 
+
+
+
 Copy-Item -ToSession $PrimaryDomainControllerSession -Path ".\*" -Destination "C:\temp\*"; # Copy script to Primary Domain Controller
 
 # ~ Organizatinal Units ======================================================================================================================
@@ -72,37 +75,7 @@ Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
         }    
     }
     
-    $Users = Import-Csv -Delimiter ";" -Path "C:\temp\Users.csv"; # Import Users from CSV file
+}
 
-    foreach ($User in $Users) 
-    {
-        # Extract data from CSV file
-        $Surname = $User.Lastname;
-        $Givenname = $User.Firstname;
-        $Displayname = $Givenname + "." + $Surname;
-        $UPNUser = $Displayname+$UPN;
-        $Title = $User.JobTitle
-        $Password = $User.Password
-        $Department = $User.Department
-        $Path = "OU=" + $Department + ",OU=intranet,$DC"
-        $GroupName = "OU=" + $User.GroupName+",$DC";
-        $DistinguishedName = "CN=" + $Displayname + "," + $Path;
-
-        New-ADUser -Name $Displayname ``
-        -UserPrincipalName $UPNUser `
-        -GivenName $Givenname `
-        -Surname $Surname `
-        -Displayname $Displayname `
-        -EmailAddress $UPNUser `
-        -Title $Title
-        -AccountPassword (ConvertTo-SecureString $Password -AsPlainText -Force) `
-        -Enabled $true `
-        -ChangePasswordAtLogon $true `
-        -PasswordNeverExpires `
-        -Path $Path
-        -HomeDirectory "\\$($Infrastructure[2].Name)\Homes\$($Displayname)" `
-        -ProfilePath "\\$($Infrastructure[1].Name)\Profiles\$($Displayname)" `;
-
-        Add-ADGroupMember $GroupName $DistinguishedName;
-    }
-} # Based on NWB SCRIPT - Supplemented by info from https://learn.microsoft.com/en-us/powershell/module/activedirectory/new-aduser?view=windowsserver2022-ps
+# ~ Users ======================================================================================================================
+Add-UsersInAD -SourceFile ".\Users.csv" -DestinationServer $Infrastructure[0].Name; # Add users to DC1

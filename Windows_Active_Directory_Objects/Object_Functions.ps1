@@ -63,3 +63,71 @@ function Add-Shares
     - https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-accessruleprotection?view=powershell-7.1
     #>
 }
+
+function Add-UsersInAD
+{
+    <#
+    .SYNOPSIS
+    Add users to Active Directory from a CSV file.
+    .DESCRIPTION
+    Add users to Active Directory from a CSV file.
+    .PARAMETER SourceFile
+    The path to the CSV file containing the users to add.
+    .PARAMETER DestinationServer
+    The name or IP address of the server to add the users to.
+    .PARAMETER DistinguishedPath
+    The distinguished path of the DC to add the users to.
+    .EXAMPLE
+    Add-UsersInAD -SourceFile ".\Users.csv" -DestinationServer "DC01" -DistinguishedPath "DC=intranet,DC=contoso,DC=com";
+    #>
+    param
+    (
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$SourceFile,
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$DestinationServer,
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$DistinguishedPath
+
+    );
+
+    $ServerSession = New-PSSession -ComputerName $DestinationServer -Credential  (Get-Credential -Message "Enter credentials for $($DestinationServer)" -UserName "Administrator");
+    $Users = Import-Csv -Delimiter ";" -Path "C:\temp\Users.csv"; # Import Users from CSV file
+    Invoke-Command -Session $ServerSession -ScriptBlock { 
+        foreach ($User in $using:Users) 
+        {
+            # Extract data from CSV file
+            $Surname = $User.Lastname;
+            $Givenname = $User.Firstname;
+            $Displayname = $Givenname + "." + $Surname;
+            $UPNUser = $Displayname+$UPN;
+            $Title = $User.JobTitle
+            $Password = $User.Password
+            $Department = $User.Department
+            $Path = "OU=" + $Department + ",OU=intranet,$DistinguishedPath"
+            $GroupName = "OU=" + $User.GroupName+",$DistinguishedPath";
+            $DistinguishedName = "CN=" + $Displayname + "," + $Path;
+
+            New-ADUser -Name $Displayname `
+            -UserPrincipalName $UPNUser `
+            -GivenName $Givenname `
+            -Surname $Surname `
+            -Displayname $Displayname `
+            -EmailAddress $UPNUser `
+            -Title $Title
+            -AccountPassword (ConvertTo-SecureString $Password -AsPlainText -Force) `
+            -Enabled $true `
+            -ChangePasswordAtLogon $true `
+            -PasswordNeverExpires `
+            -Path $Path
+            -HomeDirectory "\\$($Infrastructure[2].Name)\Homes\$($Displayname)" `
+            -ProfilePath "\\$($Infrastructure[1].Name)\Profiles\$($Displayname)";
+
+            Add-ADGroupMember $GroupName $DistinguishedName;
+        }
+    }
+    
+} # Based on NWB SCRIPT - Supplemented by info from https://learn.microsoft.com/en-us/powershell/module/activedirectory/new-aduser?view=windowsserver2022-ps
