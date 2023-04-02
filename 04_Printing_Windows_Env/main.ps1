@@ -256,6 +256,19 @@ function Test-PrinterSettings
 
 function Test-PrinterExistence 
 {
+    <#
+        .SYNOPSIS
+        Check if a printer exists.
+
+        .DESCRIPTION
+        This function checks if a printer exists.
+
+        .PARAMETER PrinterName
+        The name of the printer.
+
+        .EXAMPLE
+        Test-PrinterExistence -PrinterName "HP color LaserJet 2700"
+    #>
     param(
         [Parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
@@ -274,6 +287,28 @@ function Test-PrinterExistence
 
 function New-SharedPrinter
 {
+    <#
+        .SYNOPSIS
+        Share a network printer.
+
+        .DESCRIPTION
+        This function shares a network printer.
+
+        .PARAMETER PrinterSettings
+        A hashtables with printer settings.
+
+        .EXAMPLE
+        New-SharedPrinter -Printer @{
+                Name = "HP color LaserJet 2700"
+                DriverName = "HP Universal Print Driver PCL6 (v6.7.0.20071)"
+                PortName = "LPT2"
+                PortNumber = 9100
+                PortProtocol = "TCP"
+                IPAddress = ""
+                StartTime = "08:00"
+                EndTime = "18:00"
+            }
+    #>
     param(
         [Parameter(Mandatory=$true,ValueFromPipeline=$true,Position=0)]
         [ValidateNotNullOrEmpty()]
@@ -358,3 +393,39 @@ function Add-NetworkPrinter
     }
 }
 
+function Remove-UnusedPrinter
+{
+    <#
+        .SYNOPSIS
+        Remove a printer and its unused ports.
+
+        .DESCRIPTION
+        This function removes a printer and its unused ports.
+
+        .PARAMETER PrinterName
+        The name of the printer.
+
+        .EXAMPLE
+        Remove-UnusedPrinter -PrinterName "HP color LaserJet 2700"
+    #>
+    
+    param(
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,Position=0)]
+        [ValidateNotNullOrEmpty()]
+        [string]$PrinterName
+    );
+
+    # Check if the printer exists
+   
+    if (Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue)  # If the printer exists
+    {
+        Remove-Printer -Name $PrinterName -Force; # Remove the printer
+
+        # Retrieve the printer ports that are not used by any printer
+        $UnusedPorts = Get-PrinterPort | Where-Object { $null -eq $_.PrinterName };
+        $UnusedPorts | ForEach-Object { Remove-PrinterPort -Name $_.Name -Force }; # Remove the unused printer ports
+    }
+    else {
+        Write-Warning "The printer $PrinterName does not exist";
+    }
+}
