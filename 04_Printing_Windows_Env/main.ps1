@@ -203,4 +203,158 @@ function Test-Archive  # Check if a file is a zip archive, weird gimmick with ex
     return $isArchive
 }
 
+
+
+
+
 Install-PrintDriver -PrintDriverName "universal_print_driver-HP.exe" -DownloadPath "C:\Temp\PrintDrivers" -DownloadUrl "https://ftp.hp.com/pub/softlib/software13/COL40842/ds-99374-24/upd-pcl6-x64-7.0.1.24923.exe";
+
+# Install and share a network printer, with IP address 172.23.80.3, with that driver.
+function Test-PrinterSettings 
+{
+    <#
+        .SYNOPSIS
+        Check if the printer settings are valid.
+
+        .DESCRIPTION
+        This function checks if the printer settings are valid.
+
+        .PARAMETER PrinterSettings
+        A hashtables with printer settings.
+
+        .EXAMPLE
+        Test-PrinterSettings -Printer @{
+                Name = "HP color LaserJet 2700"
+                DriverName = "HP Universal Print Driver PCL6 (v6.7.0.20071)"
+                PortName = "LPT2"
+                PortNumber = 9100
+                PortProtocol = "TCP"
+                IPAddress = ""
+                StartTime = "08:00"
+                EndTime = "18:00"
+            }
+        
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateNotNullOrEmpty()]
+        [hashtable]$PrinterSettings
+    )
+
+    # Check if hash table has correct keys: name, drivername, portname, portnumber, portprotocol, ipaddress, driverpath, sharename, location
+    $Keys = @("Name","DriverName","PortName","PortNumber","PortProtocol","IPAddress","DriverPath","ShareName","Location");
+    $Keys | ForEach-Object
+    {
+        if(-not $PrinterSettings.ContainsKey($_))
+        {
+            Write-Error "The hash table does not contain the key $_";
+            return $False;
+        }
+    }
+    return $True;
+}
+
+function Test-PrinterExistence 
+{
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$PrinterName
+    )
+
+    if (Get-Printer -Name "$PrinterName" -ErrorAction SilentlyContinue) 
+    {
+        Write-Host "The printer $("$PrinterName") installed" -ForegroundColor Green;
+        return $true;
+    }
+    Write-Host "The printer $("$PrinterName") does not exist" -ForegroundColor Red;
+    return $false;
+    
+}
+
+function New-SharedPrinter
+{
+    param(
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,Position=0)]
+        [ValidateNotNullOrEmpty()]
+        [string]$PrinterName # Array of printer settings (printer name, IP address, driver name, share name) type: [hashtable]
+    );
+    
+    # Share the printer with Everyone
+    $Acl = Get-Acl "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers\$("$PrinterName")"; # Get the ACL of the printer
+    $Ar = New-Object System.Security.AccessControl.RegistryAccessRule("Everyone","FullControl","Allow"); # Create a new access rule
+    $Acl.SetAccessRule($Ar); # Add the access rule to the ACL
+    Set-Acl "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers\$($PrinterName)" $Acl # Set the ACL of the printer
+    Set-Printer -Name $("$PrinterName") -Shared $True # Share the printer
+}
+
+function Add-NetworkPrinter 
+{
+    <#
+        .SYNOPSIS
+        Install and share a network printer.
+
+        .DESCRIPTION
+        This function installs and shares a network printer.
+
+        .PARAMETER PrinterSettings
+        An array containing hashtables with printer settings.
+
+        .EXAMPLE
+        Add-NetworkPrinter -Printer @(
+            @{
+                Name = "HP color LaserJet 2700"
+                DriverName = "HP Universal Print Driver PCL6 (v6.7.0.20071)"
+                PortName = "LPT2"
+                PortNumber = 9100
+                PortProtocol = "TCP"
+                IPAddress = ""
+                StartTime = "08:00"
+                EndTime = "18:00"
+                ShareName = "HPcolorLaserJet2700"
+            }
+        );
+
+    #>
+    param(
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true,Position=0)]
+        [ValidateNotNullOrEmpty()]
+        [array]$PrinterSettings # Array of printer settings (printer name, IP address, driver name, share name) type: [hashtable]
+    );
+    
+        
+    
+    $PrinterSettings | ForEach-Object
+    {
+        # Check if hash table has correct keys: name, drivername, portname, portnumber, portprotocol, ipaddress, driverpath, sharename, location
+        if((Test-PrinterSettings -PrinterSettings $_) -and (-not (Test-PrinterExistence -PrinterSettings $_))) # Check if the printer settings are valid and if the printer exists
+        {
+            
+            if($_.StartTime -and $_.EndTime) # Check if the printer has a start and end time, if so Add-PrinterDriver with the -StartTime and -UntilTime parameters
+            {
+                Add-PrinterDriver -ConnectionName "\\$($_.IPAddress)\$($_.ShareName)" `
+                -Name $_.Name `
+                -DriverName $_.DriverName `
+                -PortName $_.PortName `
+                -Location $_.Locationn
+                -StartTime $_.StartTime `
+                -UntilTime $_.EndTime;
+            }
+            else # Add the printer without the -StartTime and -UntilTime parameters
+            {
+                Add-PrinterDriver -ConnectionName "\\$($_.IPAddress)\$ShareName" `
+                -Name $_.Name `
+                -DriverName $_.DriverName `
+                -PortName $_.PortName `
+                -Location $_.Locationn;
+            }
+        
+            # Share the printer with Everyone
+            New-SharedPrinter -PrinterName $_.Name;
+        
+            # Check if the printer was installed successfully
+            Test-PrinterExistence -PrinterSettings $_;
+        }
+    }
+}
+
