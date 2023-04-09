@@ -1,2 +1,3 @@
 Name;Path;FolderPermissions;NtfsPermission
 Home$;C:\homes;Everyone;Domain Admins:Full Control,Authenticated Users:ReadAndExecute|Synchronize
+Recipes$;C:\Recipes;Everyone;Domain Admins:Full Control,Authenticated Users:ReadAndExecute|Synchronize
