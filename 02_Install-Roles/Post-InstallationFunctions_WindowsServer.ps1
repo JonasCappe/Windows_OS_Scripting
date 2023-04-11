@@ -1,6 +1,6 @@
 . ".\Windows-Network-RelatedFunctions.ps1";
 # ~ GLOBAL VARIABLES
-$InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex);  # Get the interface index of the network adapter that is connected to the network
+#$InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex);  # Get the interface index of the network adapter that is connected to the network
 $ConnectionUrl = "https://www.howest.be"; # URL to test internet connectivity
 
 
@@ -16,13 +16,13 @@ function Show-IsServerCore
         .OUTPUTS
         Boolean - True if ServerCore, False if not
     #>
-    $osServer = (Get-ComputerInfo | Select-Object OsServerLevel); # Get OS Server Level
+    $OsServer = (Get-ComputerInfo | Select-Object -ExpandProperty OsServerLevel); # Get OS Server Level
 
     if($OsServer -eq "ServerCore") # Check if OS Server Level is ServerCore
     {
-        return $true;
+        return $True;
     }
-    return $false;
+    return $False;
 }
 
 # CHECK IF STATIC IP IS SET (DHCP IS Disabled = Static IP)
@@ -187,7 +187,7 @@ function Update-StaticIp
 
     # Get user input
     # Check if static IP is already set, if so ask user if he wants to overwrite previous settings
-    if(!(Show-StaticIpSet)) { Set-StaticIp -IpAddress $IpAddress -Prefix $Prefix -DefaultGateway $DefaultGateway; }
+    if(!(Show-StaticIpSet)) { Set-StaticIp -InterfaceIndex $InterfaceIndex -IpAddress $IpAddress -Prefix $Prefix -DefaultGateway $DefaultGateway; }
     else 
     { 
         Write-Host "Static configuration was alraedy set!";
@@ -241,7 +241,7 @@ function Update-DNSServers
     );
     if(!(Show-DnsServersSet)) # Check if DNS servers are already set
     {
-        Set-DnsClientServerAddress -InterfaceIndex $InterfaceIndex -ServerAddresses $DnsServers; # Set DNS servers
+        Set-DnsClientServerAddress -InterfaceIndex $InterfaceIndex -ServerAddresses "$DnsServers"; # Set DNS servers
         Write-Host "DNS servers succesfully set...";
     }
     else
@@ -250,10 +250,10 @@ function Update-DNSServers
         $overwriteConfig = Read-Host "Do you wish to overwrite the previous configuration?";
         if([string]$overwriteConfig.ToLower.Equals("y")) # If user wants to overwrite previous settings
         {
-            Clear-DnsClientCache # Clear DNS cache
-            Write-Host "DNS cash cleared..."
-            Set-DnsClientServerAddress -InterfaceIndex $InterfaceIndex -ServerAddresses ($preferedDNS,$alternateDNS) # Set DNS servers
-            Write-Host "Updated DNS servers..." 
+            Clear-DnsClientCache; # Clear DNS cache
+            Write-Host "DNS cash cleared...";
+            Set-DnsClientServerAddress -InterfaceIndex $InterfaceIndex -ServerAddresses "$DnsServers"; # Set DNS servers
+            Write-Host "Updated DNS servers...";
         }
     }
 }
@@ -264,7 +264,7 @@ function Disable-Ipv6
         [Parameter(Mandatory=$True,ValueFromPipeline=$True)]
         [int]$InterfaceIndex
     );
-    Get-NetAdapterBinding -InterfaceIndex $InterfaceIndex | Set-NetAdapterBinding -Enabled:$false -ComponentID ms_tcpip6 # Disable IPv6 protocol for interface
+    Get-NetAdapterBinding -Name (Get-NetAdapter -InterfaceIndex $InterfaceIndex | Select-Object -ExpandProperty Name) -DisplayName '*TCP/IPv6*' | Set-NetAdapterBinding -Enabled:$false -ComponentID ms_tcpip6; # Disable IPv6 protocol for interface
     Write-Host "Disabled IPv6 protocol for interface $InterfaceIndex";
 }
 
@@ -355,7 +355,7 @@ function Update-Preferences
             Write-Host "Enabled numlock on boot..."
 
             # ENABLE CONTROL PANEL VIEW TO SMALL ICONS
-            rite-Output "Setting Control Panel view to small icons...";
+            write-Output "Setting Control Panel view to small icons...";
 	        If (!(Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\ControlPanel")) {
 	        	New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\ControlPanel" | Out-Null;
 	        }

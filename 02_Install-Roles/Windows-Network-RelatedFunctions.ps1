@@ -98,7 +98,7 @@ function Get-Subnet # Retrieve the subnet of an interface (IP address and prefix
         [int]$InterfaceIndex
     )
     $ipAddress = Get-NetIPAddress -InterfaceIndex $InterfaceIndex | Where-Object {$_.AddressFamily -eq "IPv4"};
-    return ""+(Out-NetworkIpAddress -IpAddress $ipAddress.IPAddress -SubnetMask (Convert-PrefixToSubnetMask -PrefixLength $ipconfig.PrefixLength))+"/"+$ipAddress.PrefixLength;
+    return (Out-NetworkIpAddress -IpAddress $ipAddress.IPAddress -SubnetMask (Convert-PrefixToSubnetMask -PrefixLength $ipAddress.PrefixLength))+"/"+$ipAddress.PrefixLength;
 }
 
 function Get-BroadcastAddress # Retrieve the broadcast address of an interface

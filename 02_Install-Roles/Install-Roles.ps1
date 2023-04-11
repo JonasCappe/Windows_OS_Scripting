@@ -84,12 +84,23 @@ function Install-DomainController
         .EXAMPLE
         Install-DomainController
     #>
+    param(
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string]$DomainName,
+        [parameter(Mandatory=$True,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string]$NetBiosName,
+        [parameter(Mandatory=$False,ValueFromPipeline=$True)]
+        [ValidateNotNullOrEmpty()]
+        [string]$LogPath= "C:\Windows\NTDS"
+    );
     if(!(Show-PromotionInProgress)) # Check if the server is already promoted to a domain controller
     {
         # Ask for the domain name, the NetBIOS name and the logging path
         $LogPath = "C:\Windows\NTDS"; # Default logging path
-        $DomainName = Read-Host "Enter the domain name";
-        $NetBiosName = (Read-Host "Enter the NetBIOS name").ToUpper();
+        #$DomainName = Read-Host "Enter the domain name";
+        #$NetBiosName = (Read-Host "Enter the NetBIOS name").ToUpper();
         # prompt the user to change the logging path
         $Answer = Read-Host "Change logging path (Y/N)?";
         if($Answer.ToLower -eq "Y") # Check if the logging path should be changed, if so, ask for the new path
@@ -200,18 +211,15 @@ function Install-SecondaryDomainController
     );
     Install-ADDSDomainController `
     -DatabasePath $LogPath `
-    -DomainMode "WinThreshold" `
-    -DomainMode "WinThreshold" `
     -DomainName $DomainName `
-    -DomainNetbiosName $NetBiosName `
+    -SiteName $NetBiosName `
     -InstallDns:$True `
     -LogPath $LogPath `
     -NoRebootOnCompletion:$True `
     -NoGlobalCatalog:$false `
-    -ReplicationSourceDC $ReplicationSourceDC `
-    -SiteName $SiteName `
     -SysvolPath "C:\Windows\SYSVOL" `
     -SafeModeAdministratorPassword (ConvertTo-SecureString (Read-Host "Recovery password"-AsSecureString) -AsPlainText -Force) `
+    -Credential (Get-Credential -Message "Credentials Domain Admin" -Username "$($NetBiosName)\administrator") `
     -Force:$true
 }
 
@@ -263,12 +271,19 @@ function Add-ReversLookupZone
     # Get the interface index of the network adapter that is connected to the network
     $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
     # Create the reverse lookup zone for the subnet and make sure the pointer record of the first domain controller appears in that zone
-    $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -notlike '*Loopback*' }; # Get ipconfig of the first network adapter
+    #$Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -notlike '*Loopback*' }; # Get ipconfig of the first network adapter
     
-    $Subnet = Out-NetworkIpAddress -IpAddress $Ipconfig.IpAddress -PrefixLength ($Ipconfig.PrefixLength); # Get the network part of the IP address
-   
-    Add-DnsServerPrimaryZone -NetworkID $Subnet -ReplicationScope "Domain" -DynamicUpdate "Secure";
-    Add-DnsServerResourceRecordPTR -Name $env:computername -PtrDomainName Get-ComputerFQDN -ZoneName ("0." + (Get-ReverseLookupZoneName -InterfaceIndex $InterfaceIndex));
+    $Subnet = Get-Subnet -InterfaceIndex $InterfaceIndex; # Get the network part of the IP address
+
+    if(-not (Get-DnsServerZone -ZoneName (Get-ReverseLookupZoneName -InterfaceIndex $InterfaceIndex) -ErrorAction SilentlyContinue))
+    {
+        Add-DnsServerPrimaryZone -NetworkID $Subnet -ReplicationScope "Domain" -DynamicUpdate "Secure";
+    }
+    
+    if(-not (Get-DnsServerResourceRecord -Name $env:computername -ZoneName (Get-ReverseLookupZoneName -InterfaceIndex $InterfaceIndex) -RRType "Ptr" -ErrorAction SilentlyContinue))
+    {
+        Add-DnsServerResourceRecordPTR -Name $env:computername -PtrDomainName Get-ComputerFQDN -ZoneName (Get-ReverseLookupZoneName -InterfaceIndex $InterfaceIndex);
+    }
 } # Source: https://learn.microsoft.com/en-us/powershell/module/dnsserver/add-dnsserverprimaryzone?view=windowsserver2022-ps
 
 
@@ -297,15 +312,22 @@ function Update-DefaultFirstSiteName
     $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
 
     # Rename the 'default-first-site-name' to a meaningful name and add your subnet to it
+    # Check if the current site name is already the provided site name
+    $CurrentSiteName = (Get-ADObject -SearchBase (Get-ADRootDSE).ConfigurationNamingContext -Filter 'objectclass -like "site"').DisplayName
+    if ($CurrentSiteName -ne $SiteName) {
+        # Rename the 'default-first-site-name' to a meaningful name
+        Get-ADObject -SearchBase (Get-ADRootDSE).ConfigurationNamingContext -Filter 'objectclass -like "site"' | Set-ADObject -DisplayName $SiteName; 
+        Get-ADObject -SearchBase (Get-ADRootDSE).ConfigurationNamingContext -Filter 'objectclass -like "site"' | Rename-ADObject -NewName $SiteName;
+    }
 
-    # Rename the 'default-first-site-name' to a meaningful name
-    Get-ADObject -SearchBase (Get-ADRootDSE).ConfigurationNamingContext -Filter 'objectclass -like "site"' | Set-ADObject -DisplayName $SiteName; 
-    Get-ADObject -SearchBase (Get-ADRootDSE).ConfigurationNamingContext -Filter 'objectclass -like "site"' | Rename-ADObject -NewName $SiteName;
-
-    New-ADReplicationSubnet -Site $SiteName -Name (Get-Subnet -InterfaceIndex $InterfaceIndex); # Add the subnet of the first network adapter to the site
+    if(-not (Get-ADReplicationSubnet -Identity (Get-Subnet -InterfaceIndex $InterfaceIndex) -ErrorAction SilentlyContinue))
+    {
+        New-ADReplicationSubnet -Site $SiteName -Name (Get-Subnet -InterfaceIndex $InterfaceIndex); # Add the subnet of the first network adapter to the site
+    }
+    
 }
 
- function Enable-DHCPCurrentSubnet
+ function Enable-DHCPCurrentSubnet # TO DO Single Responsibility Principle => This function should only enable DHCP on the current subnet
  {
     try 
     {
@@ -315,20 +337,61 @@ function Update-DefaultFirstSiteName
         $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
         $Ipconfig = Get-NetIPAddress | Where-Object { $_.InterfaceIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' }; # Get ipconfig of the first network adapter
         $SubnetMask = Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength; # Get the subnet mask of the first network adapter
-        Add-DhcpServerInDC; # Authorize the DHCP server to serve DHCP requests in the subnet
+        $Subnet = Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -SubnetMask (Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength);
+
+        if ((Get-DhcpServerInDc| Where-Object { $_.IPAddress -eq $Ipconfig.IPAddress })) # Check if the DHCP server is already authorized to serve DHCP requests in the subnet
+        {
+            Write-Warning "DHCP server is already authorized for the subnet."
+        } 
+        else 
+        {
+            Add-DhcpServerInDC; # Authorize the DHCP server to serve DHCP requests in the subnet
+            Write-Host "DHCP server authorized for the subnet."
+        }
         
         # Remove warning about the DHCP server not being authorized to serve DHCP requests in the subnet
-        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" -Name "DisableDhcpMediaSense" -Value 1 -Type DWord;
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" -Name "DisableDhcpMediaSense" -Value 1 -Type DWord; # function Disable-DhcpWarningFlag
 
-        # Create IPv4 scope for the subnet (DHCP scope option)
-        Add-DhcpServerv4Scope -Name (Read-Host "Enter Scope name") `
-        -StartRange (Get-FirstAddressRange -InterfaceIndex "$InterfaceIndex") `
-        -EndRange (Get-LastAddressRange -InterfaceIndex "$InterfaceIndex") `
-        -SubnetMask (Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength) `
-        -State "Active";
-        Add-DhcpServerv4ExclusionRange -ScopeId (Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -SubnetMask $SubnetMask) -StartRange (Get-FirstAddressRange -InterfaceIndex $InterfaceIndex) -EndRange (Get-AddressInSubnet -InterfaceIndex "$InterfaceIndex" -Place 10);
-        Add-DhcpServerv4ExclusionRange -ScopeId (Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -SubnetMask $SubnetMask) -StartRange (Get-LastAddressRange -InterfaceIndex $InterfaceIndex) -EndRange (Get-LastAddressRange -InterfaceIndex $InterfaceIndex);
-        Set-DhcpServerv4OptionValue -ScopeId (Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -SubnetMask $SubnetMask) -Router (Get-LastAddressRange -InterfaceIndex $InterfaceIndex);
+        # Function to create a DHCP scope for the current subnet
+        if (Get-DhcpServerv4Scope | Where-Object { $_.Name -eq "intranet" -and $_.StartRange -eq "192.168.1.1" -and $_.EndRange -eq "192.168.1.254" -and $_.SubnetMask -eq "255.255.255.0" } -ErrorAction SilentlyContinue)
+        {
+            Write-Warning "DHCP scope already exists for the subnet."
+        } 
+        else {
+
+            # Create IPv4 scope for the subnet (DHCP scope option)
+            Add-DhcpServerv4Scope -Name (Read-Host "Enter Scope name") `
+            -StartRange (Get-FirstAddressRange -InterfaceIndex "$InterfaceIndex") `
+            -EndRange (Get-LastAddressRange -InterfaceIndex "$InterfaceIndex") `
+            -SubnetMask (Convert-PrefixToSubnetMask -PrefixLength $Ipconfig.PrefixLength) `
+            -State "Active";
+            Write-Host "DHCP scope created for the subnet."
+        }
+
+        # Function to create a DHCP reservation for the current subnet
+      
+
+        if($null -ne (Get-DhcpServerv4ExclusionRange -ScopeId $Subnet))
+        {
+            Write-Warning "DHCP exclusion range already exists for the subnet.";
+        }
+        else
+        {
+            # Create IPv4 exclusion range for the subnet (DHCP scope option) - 1st 12 addresses
+            Add-DhcpServerv4ExclusionRange -ScopeId (Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -SubnetMask $SubnetMask) -StartRange (Get-FirstAddressRange -InterfaceIndex $InterfaceIndex) -EndRange (Get-AddressInSubnet -InterfaceIndex "$InterfaceIndex" -Place 12);
+            #Add-DhcpServerv4ExclusionRange -ScopeId (Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -SubnetMask $SubnetMask) -StartRange (Get-LastAddressRange -InterfaceIndex $InterfaceIndex) -EndRange (Get-LastAddressRange -InterfaceIndex $InterfaceIndex);
+            Write-Host "DHCP exclusion range created for the subnet.";
+        }
+        
+        if($null -ne (Get-DhcpServerv4OptionValue -ScopeId $Subnet -OptionId 3 -ErrorAction SilentlyContinue))
+        {
+            Write-Warning "DHCP option 3 already exists for the subnet.";
+        }
+        else 
+        {
+            Set-DhcpServerv4OptionValue -ScopeId (Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -SubnetMask $SubnetMask) -Router (Get-FirstAddressRange -InterfaceIndex $InterfaceIndex);
+            Write-Host "DHCP option 3 created for the subnet.";
+        }
         Complete-Transaction;
     }
     catch 
@@ -373,7 +436,15 @@ function Add-DHCPOptions # Add DHCP options
     {
         foreach ($option in $Options.GetEnumerator()) 
         {
-            Set-DhcpServerv4OptionValue -OptionId $option.Key -Value $option.Value;
+            if(Get-DhcpServerv4OptionValue -OptionId $option.Key -ErrorAction SilentlyContinue)
+            {
+                Write-Warning "DHCP option $option.Key already exists.";
+            }
+            else 
+            {
+                Set-DhcpServerv4OptionValue -OptionId $option.Key -Value $option.Value -ErrorAction SilentlyContinue -Force;
+                Write-Host "DHCP option $option.Key created.";
+            }
         }
     }
 }
