@@ -1,19 +1,20 @@
 # ~ GLOBAL VARIABLES ====================================================================================================
 $Infrastructure = @(
     @{
-        Name = "DC1"
-        IP = "203.113.11.1"
+        Name = "win13-DC1"
+        IpAddress = "192.168.1.2"
     }
     @{
-        Name = "DC2"
-        IP = "203.113.11.2"
+        Name = "win13-DC2"
+        IpAddress = "192.168.1.3"
     }
     @{
-        Name = "MS"
-        IP = "203.113.11.3"
+        Name = "win13-MS"
+        IpAddress = "192.168.1.4"
     }
 ); # Remote machines
 $UPN = "mct.be" # UPN suffix
+$RemotePath = "C:\temp"; # Remote path
 
 # ~ Add UPN suffix ====================================================================================================
 $PrimaryDomainControllerSession = New-PSSession -ComputerName $Infrastructure[0].Name -Credential  (Get-Credential -Message "Enter credentials for $($Infrastructure[0].Name)" -UserName "Administrator");
@@ -32,11 +33,11 @@ Add-Shares -SourceFile ".\SharesFileServer.csv" -DestinationServer $Infrastructu
 
 # ~ Organizatinal Units & Groups ======================================================================================================================
 # Copy script to Primary Domain Controller (DC1), for remote execution
-Copy-Item -ToSession $PrimaryDomainControllerSession -Path ".\*" -Destination "C:\temp\*"; # Copy script to Primary Domain Controller
+Copy-Item -ToSession $PrimaryDomainControllerSession -Path ".\*" -Destination $RemotePath; # Copy script to Primary Domain Controller
 
 Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
     . ".\Object_Functions.ps1"
-    $DistinguishedPath = ((Get-ADForest | Select-Object -ExpandProperty PartitionsContainer).Split(',') | Where-Object { $_ -like "DC=*" }) -join ",";
+    $DistinguishedPath = ((Get-ADForest | Select-Object -ExpandProperty PartitionsContainer).Split(',') | Where-Object { $_ -like "DC=*" }) -join ","; # Get distinguished path
 
     Add-OrganizationalUnits -SourceFile ".\OrganizationalUnits.csv" -DistinguishedPath $DistinguishedPath; # Add Organizational Units to DC1
     Add-GroupsInAD -SourceFile ".\Groups.csv" -DistinguishedPath $DistinguishedPath; # Add groups to DC1
