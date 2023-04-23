@@ -72,7 +72,7 @@ $SecondaryDomainControllerSession = New-PSSession -ComputerName $SecondaryDomain
 $MemberServerSession = New-PSSession -ComputerName $MemberServer -Credential  (Get-Credential -Message "Enter credentials for $MemberServer" -UserName "Administrator"); # Create a new session to the member server
 
 
-Invoke-Command -Session $$PrimaryDomainControllerSession -ScriptBlock {
+Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
     Add-Roles -Roles @("FS-DFS-Namespace", "RSAT-DFS-Mgmt-Con","FS-DFS-Replication");
 } # Install the necessary roles + management tools on the primary domain controller (DFS-Namespace, DFS-Replication, RSAT-DFS-Mgmt-Con)
 
