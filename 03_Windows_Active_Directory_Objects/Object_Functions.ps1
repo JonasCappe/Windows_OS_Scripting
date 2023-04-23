@@ -194,6 +194,7 @@ function Add-GroupsInAD
 }
 
 
+
 function Add-OrganizationalUnits
 {
     <#
@@ -222,15 +223,26 @@ function Add-OrganizationalUnits
         [string]$DistinguishedPath
 
     );
-    $OrganizationalUnits = Import-Csv -Delimiter ";" -Path $SourceFile; # Import Organizational Units from CSV file
+
+    
+
+    $Parent = Import-Csv -Delimiter ";" -Path $SourceFile | Select-Object -First 1;
+    $OrganizationalUnits = Import-Csv -Delimiter ";" -Path $SourceFile | Where-Object { $_.Path -ne $Parent.Name };
+
+    if (-not (Get-ADOrganizationalUnit -Filter { DistinguishedName -like "OU='$($Parent.Name)','$($DistinguishedPath)'" } -ErrorAction SilentlyContinue)) # If Organizational Unit exists, skip
+    {
+        Write-Host "Organizational Unit '$($OrganizationalUnit.Name)' does not exist in '$($OrganizationalUnit.Path)'" -ForegroundColor Yellow;
+        Write-Host "Creating Organizational Unit '$($OrganizationalUnit.Name)' in '$($OrganizationalUnit.Path)'" -ForegroundColor Green;
+        New-ADOrganizationalUnit -Name $Parent.Name -Path $DistinguishedPath;
+    }
 
     # Create Organizational Units if they don't exist
     foreach ($OrganizationalUnit in $OrganizationalUnits)
     {
-        $ouPath = ($OrganizationalUnit.Path -replace ";", ",") + "," + $DistinguishedPath; # format path to be used in New-ADOrganizationalUnit
+        $ouPath = $OrganizationalUnit.Path + "," + $DistinguishedPath; # format path to be used in New-ADOrganizationalUnit
 
         #Check if exists
-        if (Get-ADOrganizationalUnit -Filter { DistinguishedName -like $ouPath } -ErrorAction SilentlyContinue) # If Organizational Unit exists, skip
+        if (Get-ADOrganizationalUnit -Filter { DistinguishedName -like "OU='$($OrganizationalUnit.Name)','$($ouPath)'" } -ErrorAction SilentlyContinue) # If Organizational Unit exists, skip
         {
             Write-Host "Organizational Unit '$($OrganizationalUnit.Name)' already exists in '$($OrganizationalUnit.Path)'" -ForegroundColor Yellow;
         }
