@@ -84,8 +84,6 @@ Copy-Item -ToSession $TargetSession -Path $SourcePath2 -Destination $Destination
 Copy-Item -ToSession $TargetSession -Path $SourcePath3 -Destination $DestinationPath3 -Force;
 
 
-
-
 Invoke-Command -Session $TargetSession  -ScriptBlock { # Execute the script on the remote server
     Set-Location $using:RemotePath; # First set the working directory to the remote path
     Write-Host $using:RemotePath;
@@ -125,7 +123,7 @@ Invoke-Command -Session $TargetSession -ScriptBlock { # Execute the script on th
 }
 
 # wait for the server to come back online - example microsoft docs didn't work, remote server was didn't respond
-Start-Sleep -Seconds 600; # Wait for the server to restart by sleeping for 10 minutes
+Start-Sleep -Seconds 400; # Wait for the server to restart by sleeping for 10 minutes
 Write-Host "Server has restarted proceding with script...";
 
 
@@ -361,6 +359,8 @@ Invoke-Command -Session $TargetSessionDhcp -ScriptBlock {
         -Name "DHCP-FAILOVER" `
         -LoadBalancePercent 60 `
         -SharedSecret (ConvertTo-SecureString (Read-Host "Sharedsecret" -AsSecureString) -AsPlainText -Force);
+
+        Invoke-DhcpServerr4FailoverReplication -Name "DHCP-FAILOVER" -Force;
     }
 
     # Get the existing DNS record for the domain name
