@@ -1,7 +1,7 @@
 . ".\Windows-Network-RelatedFunctions.ps1";
 # ~ GLOBAL VARIABLES
 #$InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex);  # Get the interface index of the network adapter that is connected to the network
-$ConnectionUrl = "https://www.howest.be"; # URL to test internet connectivity
+$Hosts = @("www.howest.be","1.1.1.3"); # URL to test internet connectivity
 
 
 # ~ CHECKS =======================================================================================================================================================================================================================================================
@@ -89,15 +89,29 @@ function Show-InternetIsReachable
 {
     <#
         .SYNOPSIS
-        Check if the internet is reachable
+        Check if the internet is reachable (connectivity + nameresolution)
         .DESCRIPTION
-        Check if the internet is reachable
+        Check if the internet is reachable (connectivity + nameresolution)
     #>
-    try {
-        Invoke-WebRequest -Uri $ConnectionUrl -UseBasicParsing -ErrorAction Stop | Out-Null;
-        Write-Host "Internet access is available."
+    try 
+    {
+        foreach ($H in $Hosts)
+        {
+            if (Test-NetConnection -ComputerName $H -InformationLevel Quiet -ErrorAction SilentlyContinue) # Check if internet is reachable (connectivity + nameresolution)
+            {
+                Write-Host “Internet Access is OK! ($host)” -ForeGroundColor Green;
+                return $true;
+            }
+            else 
+            {
+                Write-Host “Internet Access is NOT OK! ($host)” -ForeGroundColor Red;
+                return $false;
+            }
+            
+        }
     }
-    catch {
+    catch
+    {
         Write-Host "Internet access is not available."
     }
 }
@@ -111,9 +125,17 @@ function Update-ComputerName
         [ValidateNotNullOrEmpty()]
         [string]$NewName
     );
-  
-    # Set the hostname (without restart option)
-    Rename-Computer -NewName $NewName;
+    
+    if($NewName -eq ($env:COMPUTERNAME)) # Check if new name is not the same as the current name
+    {
+        Write-Error "New name can not be the same as the current name";
+    }
+    else 
+    {
+        # Set the hostname (without restart option)
+        Rename-Computer -NewName $NewName;
+    }
+    
 }
 
 # SET IPv4 CONFIGURATION - IF ALREADY SET OVERWRITE SETTINGS (first clears previous settings) 
@@ -292,21 +314,42 @@ function Update-TimeZoneToBrussels
 function Enable-RemoteDesktop 
 {
     Start-Transaction # Start transaction to undo changes if something goes wrong
-        try 
-        {
-            # Enable RDP and allow RDP through firewall
-            Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-Name "fDenyTSConnections" -Value 0 ;
-            Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name “UserAuthentication” -Value 1;
-            Write-Host "Enabled Remote Desktop...";
-            Enable-NetFirewallRule -DisplayGroup "Remote Desktop";
-            Write-Host "Allowed RDP trough firewall...";
-            Complete-Transaction;
-        }
-        catch 
-        {
-            Write-Error "Could not enable RDP at this moment: $_";
-            Undo-Transaction;
-        }
+    try 
+    {
+        
+        # Enable RDP and allow RDP through firewall
+        Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-Name "fDenyTSConnections" -Value 0 ;
+        Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name “UserAuthentication” -Value 1;
+        Write-Host "Enabled Remote Desktop...";
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop";
+        Write-Host "Allowed RDP trough firewall...";
+        Complete-Transaction;
+    }
+    catch 
+    {
+        Write-Error "Could not enable RDP at this moment: $_";
+        Undo-Transaction;
+    }
+}
+
+function Disable-RemoteDesktop
+{
+    Start-Transaction # Start transaction to undo changes if something goes wrong
+    try 
+    {
+        # Disable RDP and remove RDP from firewall
+        Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-Name "fDenyTSConnections" -Value 1 ;
+        Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name “UserAuthentication” -Value 0;
+        Write-Host "Disabled Remote Desktop...";
+        Disable-NetFirewallRule -DisplayGroup "Remote Desktop";
+        Write-Host "Removed RDP from firewall...";
+        Complete-Transaction;
+    }
+    catch 
+    {
+        Write-Error "Could not disable RDP at this moment: $_";
+        Undo-Transaction;
+    }
 }
 
 # ~ UDPATE PREFERENCES ON DESKTOP EXPERIENCE 
