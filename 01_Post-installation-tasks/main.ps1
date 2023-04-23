@@ -1,5 +1,5 @@
 # Description: Main script for executing the post-installation tasks
-$TargetSession = New-PSSession -ComputerName (Read-Host "Enter the name of the AD controller") -Credential (Get-Credential)
+$TargetSession = New-PSSession -ComputerName (Read-Host "Enter the name or IP ot the server") -Credential (Get-Credential)
 $RemotePath = "C:\temp\" # Set the remote path
 
 # Check if the destination folder exists remotely, and create it if it doesn't
@@ -15,3 +15,5 @@ Invoke-Command -Session $TargetSession -ScriptBlock { # Execute the script on th
     . ".\Post-Installation_WindowsServer.ps1"; # Then execute the script for loading the functions
     Show-MainMenu # Finally call the main menu
 };
+
+# AUTOMATED VERSION WEEK2
