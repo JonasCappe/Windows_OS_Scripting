@@ -227,31 +227,37 @@ function Add-OrganizationalUnits
     );
 
     
-
-    $Parent = Import-Csv -Delimiter ";" -Path $SourceFile | Select-Object -First 1;
-    $OrganizationalUnits = Import-Csv -Delimiter ";" -Path $SourceFile | Where-Object { $_.Name -ne $Parent.Name };
-
-    if (-not (Get-ADOrganizationalUnit -Filter { DistinguishedName -like "OU='$($Parent.Name)','$($DistinguishedPath)'" } -ErrorAction SilentlyContinue)) # If Organizational Unit exists, skip
-    {
-        Write-Host "Organizational Unit '$($OrganizationalUnit.Name)' does not exist in '$($OrganizationalUnit.Path)'" -ForegroundColor Yellow;
-        Write-Host "Creating Organizational Unit '$($OrganizationalUnit.Name)' in '$($OrganizationalUnit.Path)'" -ForegroundColor Green;
-        New-ADOrganizationalUnit -Name $Parent.Name -Path $DistinguishedPath;
-    }
-
-    # Create Organizational Units if they don't exist
-    foreach ($OrganizationalUnit in $OrganizationalUnits)
-    {
-        $ouPath = $OrganizationalUnit.Path + "," + $DistinguishedPath; # format path to be used in New-ADOrganizationalUnit
-
-        #Check if exists
-        if (Get-ADOrganizationalUnit -Filter { DistinguishedName -like "OU='$($OrganizationalUnit.Name)','$($ouPath)'" } -ErrorAction SilentlyContinue) # If Organizational Unit exists, skip
+    try {
+        $Parent = Import-Csv -Delimiter ";" -Path $SourceFile | Select-Object -First 1
+        $OrganizationalUnits = Import-Csv -Delimiter ";" -Path $SourceFile | Where-Object { $_.Name -ne $Parent.Name }
+        Write-Host "OU=$($Parent.Name),$($DistinguishedPath)"
+        Write-Host ($null -eq (Get-ADOrganizationalUnit -Filter { DistinguishedName -like "OU=$($Parent.Name),$($DistinguishedPath)" } ))
+        
+        if ($null -eq (Get-ADOrganizationalUnit -Filter { DistinguishedName -like "OU=$($Parent.Name),$($DistinguishedPath)" } )) 
         {
-            Write-Host "Organizational Unit '$($OrganizationalUnit.Name)' already exists in '$($OrganizationalUnit.Path)'" -ForegroundColor Yellow;
+            Write-Verbose "Organizational Unit $($Parent.Name) does not exist in $($DistinguishedPath)"
+            Write-Verbose "Creating Organizational Unit $($Parent.Name) in $($DistinguishedPath)"
+            #New-ADOrganizationalUnit -Name $Parent.Name -Path $DistinguishedPath
         }
-        else # If Organizational Unit doesn't exist, create it
+
+
+        foreach ($OrganizationalUnit in $OrganizationalUnits) 
         {
-            Write-Host "Creating Organizational Unit '$($OrganizationalUnit.Name)' in '$($OrganizationalUnit.Path)'" -ForegroundColor Green;
-            New-ADOrganizationalUnit -Name $OrganizationalUnit.Name -Path $ouPath; 
-        }    
+           write-host "OU=$($OrganizationalUnit.Name),OU=$($Parent.Name),$($DistinguishedPath)"
+
+            if ($null -ne (Get-ADOrganizationalUnit -Filter { DistinguishedName -like "OU=$($OrganizationalUnit.Name),OU=$($Parent.Name),$($DistinguishedPath)" }))
+            {
+                Write-Host "Organizational Unit $($OrganizationalUnit.Name) already exists in $($OrganizationalUnit.Path)" -ForegroundColor Yellow;
+            }
+            else
+            {
+                Write-Host "Creating Organizational Unit $($OrganizationalUnit.Name) in $($OrganizationalUnit.Path)" -ForegroundColor Green;
+                New-ADOrganizationalUnit -Name $OrganizationalUnit.Name -Path "OU=$($Parent.Name),$($DistinguishedPath)";
+            }
+        }
+    }
+    catch 
+    {
+        Write-Error $_.Exception.Message
     }
 }
