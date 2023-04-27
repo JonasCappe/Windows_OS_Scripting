@@ -7,16 +7,16 @@ DLG-BOARD;DomainLocal;Security;;OU=Board,OU=intranet
 GG-BOARD;Global;Security;DLG-BOARD;OU=Board,OU=intranet
 DLG-MARKETING;DomainLocal;Security;;OU=Marketing,OU=intranet
 GG-MARKETING;Global;Security;DLG-MARKETING;OU=Marketing,OU=intranet
-DLG-PROJECT-ADMINS;DomainLocal;Security;;OU=ProjectAdmins,OU=Projects,OU=intranet
-GG-PROJECT-ADMINS;Global;Security;DLG-PROJECT-ADMINS;OU=ProjectAdmins,OU=Projects,OU=intranet
-DLG-ENGINEERING;DomainLocal;Security;;OU=Engineer,OU=intranet
+DLG-ENGINEERING;DomainLocal;Security;;OU=Engineering,OU=intranet
 GG-ENGINEERING;Global;Security;DLG-ENGINEERING;OU=Engineering,OU=intranet
 DLG-MANUFACTURING;DomainLocal;Security;;OU=Manufacturing,OU=intranet
 GG-MANUFACTURING;Global;Security;DLG-MANUFACTURING;OU=Manufacturing,OU=intranet
 DLG-PROJECTS;DomainLocal;Security;;OU=Projects,OU=intranet
-DLG-PROJECTA;DomainLocal;Security;OU=Projects,OU=intranet
-DLG-PROJECTB;DomainLocal;Security;OU=Projects,OU=intranet
-DLG-PROJECTC;DomainLocal;Security;OU=Projects,OU=intranet
-GG-PROJECTA;Global;Security;DLG-PROJECTS;DLG-PROJECTA;OU=Projects,OU=intranet
-GG-PROJECTB;Global;Security;DLG-PROJECTS;DLG-PROJECTB;OU=Projects,OU=intranet
-GG-PROJECTC;Global;Security;DLG-PROJECTS;DLG-PROJECTC;OU=Projects,OU=intranet
+DLG-PROJECT-ADMINS;DomainLocal;Security;;OU=Projects,OU=intranet
+DLG-PROJECTA;DomainLocal;Security;;OU=Projects,OU=intranet
+DLG-PROJECTB;DomainLocal;Security;;OU=Projects,OU=intranet
+DLG-PROJECTC;DomainLocal;Security;;OU=Projects,OU=intranet
+GG-PROJECT-ADMINS;Global;Security;DLG-PROJECTS;OU=Projects,OU=intranet
+GG-PROJECTA;Global;Security;DLG-PROJECTS DLG-PROJECTA;OU=Projects,OU=intranet
+GG-PROJECTB;Global;Security;DLG-PROJECTS DLG-PROJECTB;OU=Projects,OU=intranet
+GG-PROJECTC;Global;Security;DLG-PROJECTS DLG-PROJECTC;OU=Projects,OU=intranet

@@ -1,3 +1,3 @@
-Name;Path;FolderPermissions;NtfsPermission
-Home$;C:\homes;Everyone;Domain Admins:FullControl,Authenticated Users:ReadAndExecute|Synchronize
-Recipes$;C:\Recipes;Everyone;Domain Admins:FullControl,Authenticated Users:ReadAndExecute|Synchronize
+Name;Path;FolderPermissions;NtfsPermission;Inheritance;Propagation;AccessControlType
+Homes$;C:\homes;Everyone;Domain Admins:FullControl,Authenticated Users:ReadAndExecute|Synchronize;None;NoPropagateInherit;Allow
+Recipes$;C:\Recipes;Everyone;Domain Admins:FullControl,Authenticated Users:ReadAndExecute|Synchronize;None;NoPropagateInherit;Allow

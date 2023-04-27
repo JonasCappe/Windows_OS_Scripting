@@ -1,4 +1,5 @@
 
+$Domain = $env:USERDOMAIN;
 function Add-Shares
 {
     <#
@@ -29,7 +30,7 @@ function Add-Shares
         [string]$DestinationServer
     );
 
-    $ServerSession = New-PSSession -ComputerName $DestinationServer -Credential (Get-Credential -Message "Enter credentials for $($DestinationServer)" -UserName "Administrator");
+    $ServerSession = New-PSSession -ComputerName $DestinationServer -Credential (Get-Credential -Message "Enter credentials for $($DestinationServer)" -UserName "intranet\Administrator");
 
     # Create the share containing the users home folders. (Tip:New-SmbShare, Get-Acl, SetAccessRuleProtection, Set-Acl, ...)
     $Shares = Import-Csv -Delimiter ";" -Path $SourceFile; # Import Shares from CSV file
@@ -53,6 +54,7 @@ function Add-Shares
             $ACL = Get-Acl -Path "\\$($using:DestinationServer)\$($using:Share.Name)"; # Get ACL of share
             $ACL.SetAccessRuleProtection($true, $false); # Disable inheritance
             $ACL.Access | ForEach-Object { $ACL.RemoveAccessRule($_) } # Remove all access rules
+
             $Share = $using:Share;
             $Security = $Share.NtfsPermission.split(",")[0].Split(":");
             $NtfsPermission = $Share.NtfsPermission.split(",")[1].Split(":").replace("|",",");
@@ -60,7 +62,19 @@ function Add-Shares
             {
                 $SecurityPrincipal = $Permission.split(":")[0]; # Get Security Principal
                 $NtfsPermission = $Permission.split(":")[1].replace("|",","); # Get Ntfs Permission
-                $ACL.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($SecurityPrincipal, "$NtfsPermission", "Allow"))); # Create new access rule for Security Principal and add it to ACL
+                if($SecurityPrincipal -like "*Admins*") # IF admin overwrite LP settings
+                {
+                    $Inheritance = "ContainerInherit, ObjectInherit";
+                    $Propagation = "None";
+                }
+                else
+                {
+                    $Inheritance = $Share.Inheritance;
+                    $Propagation = $Share.Propagation;
+                }
+                
+                $AccessControlType = $Share.AccessControlType;
+                $ACL.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($SecurityPrincipal, "$NtfsPermission", "$Inheritance","$Propagation","$AccessControlType"))); # Create new access rule for Security Principal and add it to ACL
             }
             Set-Acl -Path "\\$($using:DestinationServer)\$($using:Share.Name)" -AclObject $ACL; # Set ACL of share
         }
@@ -100,48 +114,87 @@ function Add-UsersInAD
         [string]$SourceFile,
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
         [ValidateNotNullOrEmpty()]
-        [string]$DestinationServer,
+        [string]$DistinguishedPath,
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
         [ValidateNotNullOrEmpty()]
-        [string]$DistinguishedPath
+        [string]$HomePath,
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ProfilePath
 
     );
 
-    $ServerSession = New-PSSession -ComputerName $DestinationServer -Credential (Get-Credential -Message "Enter credentials for $($DestinationServer)" -UserName "Administrator");
+    #$ServerSession = New-PSSession -ComputerName $DestinationServer -Credential (Get-Credential -Message "Enter credentials for $($DestinationServer)" -UserName "Administrator");
+   Start-Transaction;
+   try
+   {
+     
     $Users = Import-Csv -Delimiter ";" -Path $SourceFile; # Import Users from CSV file
-    Invoke-Command -Session $ServerSession -ScriptBlock { 
-        foreach ($User in $Users) 
+    
+    foreach ($User in $Users) 
+    {
+        # Extract data from CSV file
+        $Surname = $User.Lastname;
+        $Givenname = $User.Firstname;
+        if($Surname -like "")
         {
-            # Extract data from CSV file
-            $Surname = $User.Lastname;
-            $Givenname = $User.Firstname;
+            $Displayname = $Givenname
+        }
+        else
+        {
             $Displayname = $Givenname + "." + $Surname;
-            $UPNUser = $Displayname+$UPN;
-            $Title = $User.JobTitle
-            $Password = $User.Password
-            $Department = $User.Department
-            $Path = "OU=" + $Department + ",OU=intranet,$DistinguishedPath"
-            $GroupName = "OU=" + $User.GroupName+",$DistinguishedPath";
-            $DistinguishedName = "CN=" + $Displayname + "," + $Path;
-
+        }
+        $UPNUser = $Displayname+$UPN;
+        $Title = $User.JobTitle
+        $Password = $User.Password
+        $Department = $User.Department
+        $Path = "OU=" + $Department + ",OU=intranet,$DistinguishedPath";
+        $DistinguishedName = "CN=" + $Displayname + "," + $Path;
+        $HomeDir = "$($HomePath)$($DisplayName)";
+        $Profile = "$($ProfilePath)$($DisplayName)";
+        
+   
+        try
+        {
+            Get-ADUser -Identity $UPNUser | Out-Null;
+            Write-Host "User with identity $($UPNUser) already exist" -ForegroundColor Yellow;
+        }
+        catch
+        {
+            Write-Host "Creating user $($UPNUser)" -ForegroundColor Green;
             New-ADUser -Name $Displayname `
             -UserPrincipalName $UPNUser `
             -GivenName $Givenname `
             -Surname $Surname `
             -Displayname $Displayname `
             -EmailAddress $UPNUser `
-            -Title $Title
+            -Title $Title `
             -AccountPassword (ConvertTo-SecureString $Password -AsPlainText -Force) `
             -Enabled $true `
-            -ChangePasswordAtLogon $true `
-            -PasswordNeverExpires `
-            -Path $Path
-            -HomeDirectory "\\$($Infrastructure[2].Name)\Homes\$($Displayname)" `
-            -ProfilePath "\\$($Infrastructure[1].Name)\Profiles\$($Displayname)";
-
-            Add-ADGroupMember $GroupName $DistinguishedName;
+            -ChangePasswordAtLogon $false `
+            -PasswordNeverExpires $true `
+            -Path $Path `
+            -HomeDirectory $HomeDir `
+            -ProfilePath $Profile;
+            
+            foreach($Group in $User.GroupName.Split(','))
+            {
+                Write-Host $DistinguishedName;
+                Get-ADGroup -Filter { name -eq $Group } | Add-ADGroupMember -members $DistinguishedName;
+                
+            }
+             
         }
-    }    
+        
+    }
+    Complete-Transaction;
+   }
+   catch
+   {
+        Write-Error "Error could not create users: $_";
+        Undo-Transaction;
+   }
+        
 } # Based on NWB SCRIPT - Supplemented by info from https://learn.microsoft.com/en-us/powershell/module/activedirectory/new-aduser?view=windowsserver2022-ps
 
 function Add-GroupsInAD
@@ -179,18 +232,33 @@ function Add-GroupsInAD
 
     foreach ($Group in $Groups)
     {
-        $ouPath = ($Group.Path -replace ";", ",") + "," + $DistinguishedPath; # format path to be used in New-ADOrganizationalUnit
+        $ouPath = "$($Group.Path),$($DistinguishedPath)"; # format path to be used in New-ADOrganizationalUnit
+        Write-Host "CN=$($Group.GroupName),$($ouPath)";
 
         #Check if exists
-        if (Get-ADGroup -Filter { DistinguishedName -like $ouPath } -ErrorAction SilentlyContinue) # If Group exists, skip
+        if ($null -ne (Get-ADGroup -Filter { DistinguishedName -like "CN=$($Group.GroupName),$($ouPath)" } -ErrorAction SilentlyContinue)) # If Group exists, skip
         {
-            Write-Host "Group '$($Group.Name)' already exists in '$($Group.Path)'" -ForegroundColor Yellow;
+            Write-Host "Group '$($Group.GroupName)' already exists in '$($Group.Path)'" -ForegroundColor Yellow;
         }
         else # If Group doesn't exist, create it
         {
-            Write-Host "Creating Group '$($Group.Name)' in '$($Group.Path)'" -ForegroundColor Green;
-            New-ADGroup -Name $Group.Name -Path $ouPath -GroupScope $Group.Scope -GroupCategory $Group.Category;
-            Add-ADGroupMember -Identity $Group.MemberOf -Members $Group.Name;    
+            Write-Host "Creating Group '$($Group.GroupName)' in '$($Group.Path)'" -ForegroundColor Green;
+            New-ADGroup -Name $Group.GroupName -Path $ouPath -GroupScope $Group.Scope -GroupCategory $Group.Category;
+            if("" -ne $Group.MemberOf)
+            {
+                if($Group.MemberOf -like "* *")
+                {
+                   foreach($MemberSchip in $Group.MemberOf.Split(" "))
+                   {
+                        Add-ADGroupMember -Identity $MemberSchip -Members $Group.GroupName;
+                   } 
+                }
+                else
+                {
+                    Add-ADGroupMember -Identity $Group.MemberOf -Members $Group.GroupName;
+                }
+            }
+                
         }    
     }
 
@@ -237,7 +305,7 @@ function Add-OrganizationalUnits
         {
             Write-Verbose "Organizational Unit $($Parent.Name) does not exist in $($DistinguishedPath)"
             Write-Verbose "Creating Organizational Unit $($Parent.Name) in $($DistinguishedPath)"
-            #New-ADOrganizationalUnit -Name $Parent.Name -Path $DistinguishedPath
+            New-ADOrganizationalUnit -Name $Parent.Name -Path $DistinguishedPath
         }
 
 
