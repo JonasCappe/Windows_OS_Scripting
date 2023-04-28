@@ -1,7 +1,5 @@
 Name;Path;FolderPermissions;NtfsPermission;Inheritance;Propagation;AccessControlType
 Homes$;C:\homes;Everyone;Domain Admins:FullControl;ContainerInherit, ObjectInherit;None;Allow
-Homes$;C:\homes;Everyone;Authenticated Users:ReadAndExecute,Synchronize;ContainerInherit, ObjectInherit;None;Allow
-Recipes$;C:\Recipes;Everyone;Domain Admins:FullControl;ContainerInherit, ObjectInherit;None;Allow
-Recipes$;C:\Recipes;Everyone;Authenticated Users:ReadAndExecute,Synchronize;ContainerInherit, ObjectInherit;None;Allow
+Homes$;C:\homes;Everyone;Authenticated Users:ReadAndExecute,Synchronize;None;NoPropagateInherit;Allow
 ABC$;C:\ABC;Everyone;Domain Admins:FullControl;ContainerInherit, ObjectInherit;None;Allow
-ABC$;C:\ABC;Everyone;Authenticated Users:ReadAndExecute,Synchronize;ContainerInherit, ObjectInherit;None;Allow
+ABC$;C:\ABC;Everyone;Domain Users:Modify;ContainerInherit, ObjectInherit;None;Allow

@@ -26,13 +26,13 @@ if ((Get-Service -Name "Winmgmt").Status -ne "Running") {
     Set-Service -Name "Winmgmt" -StartupType Automatic
     Start-Service -Name "Winmgmt"
 }
-
+$Credential = (Get-Credential -Message "Enter credentials for remoteservers" -UserName "intranet\Administrator");
 $TrustedHosts = Get-Item WSMan:\localhost\Client\TrustedHosts | Select-Object -ExpandProperty Value; # Get the trusted hosts for remoting on the local machine
 if(!($TrustedHosts -eq "192.168.1.*") -or $null -eq $TrustedHosts) # Check if the trusted hosts are set to the correct value
 {
-    Set-Item WSMan:\localhost\Client\TrustedHosts -Credential (Get-Credential -Message "Credential for local machine" -UserName "intranet\administrator") -Value "192.168.1.*" -Force; # Set the trusted hosts for remoting on the local machine
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Credential $Credential -Value "192.168.1.*" -Force; # Set the trusted hosts for remoting on the local machine
 }
-$Credential = (Get-Credential -Message "Enter credentials for remoteservers" -UserName "intranet\Administrator");
+
 # ~ CREATE SESSIONS ====================================================================================================
 $PrimaryDomainControllerSession = New-PSSession -ComputerName $Infrastructure[0].IpAddress -Credential $Credential;
 $FileServerSession = New-PSSession -ComputerName $Infrastructure[2].IpAddress -Credential $Credential;
@@ -62,8 +62,8 @@ $DistinguishedPath = Invoke-Command -Session $PrimaryDomainControllerSession -Sc
     . ".\Object_Functions.ps1";
     $Path = ((Get-ADForest | Select-Object -ExpandProperty PartitionsContainer).Split(',') | Where-Object { $_ -like "DC=*" }) -join ","; # Get distinguished path
 
-    Add-OrganizationalUnits -SourceFile ".\OrganizationalUnits.csv" -DistinguishedPath $using:DistinguishedPath; # Add Organizational Units to DC1
-    Add-GroupsInAD -SourceFile ".\Groups.csv" -DistinguishedPath $using:DistinguishedPath; # Add groups to DC1
+    Add-OrganizationalUnits -SourceFile ".\OrganizationalUnits.csv" -DistinguishedPath $Path; # Add Organizational Units to DC1
+    Add-GroupsInAD -SourceFile ".\Groups.csv" -DistinguishedPath $Path; # Add groups to DC1
     return $Path;
 }
 
@@ -99,25 +99,50 @@ Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
 # Retrieve user priciple names
 $UserPrincipleNames = Invoke-Command -ScriptBlock { return (Get-ADUser -Filter * -SearchBase "ou=intranet,dc=intranet,dc=mct,dc=be" | Select-Object -ExpandProperty UserPrincipalName) } -Session $PrimaryDomainControllerSession;
 
-# Set permission on home folder
-foreach($UserPrincipleName  in $UserPrincipleNames)
-{
-    $ACL = Invoke-Command -Session $FileServerSession -ScriptBlock { return (Get-ACL "\\$($using:Infrastructure[2].IpAddress)\homes$\$($using:UserPrincipleName)") };
-    ## Enable inheritance and copy permissions
-    $ACL.SetAccessRuleProtection($False, $True);
-    # Setting Modify for the User account
-    $SecurityPrincipal = $UserPrincipleName;
-    $NtfsPermission = "Modify";
-    $Inheritance = "ContainerInherit, ObjectInherit";
-    $Propagation = "None";
-    $AccessControlType = "Allow";
-
-    $ACL.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule("$SecurityPrincipal", "$NtfsPermission", "$Inheritance","$Propagation","$AccessControlType"))); # Create new access rule for Security Principal and add it to ACL
+Invoke-Command -Session $FileServerSession -ScriptBlock {
+    # Set permission on home folder
+    foreach($UserPrincipleName  in $UserPrincipleNames)
+    {
+        $ACL = (Get-ACL "\\$($using:Infrastructure[2].IpAddress)\homes$\$($UserPrincipleName)");
+        ## Enable inheritance and copy permissions
+        $ACL.SetAccessRuleProtection($False, $True);
+        # Setting Modify for the User account
+        $SecurityPrincipal = $UserPrincipleName;
+        $NtfsPermission = "Modify";
+        $Inheritance = "ContainerInherit, ObjectInherit";
+        $Propagation = "None";
+        $AccessControlType = "Allow";
     
-    Invoke-Command -Session $FileServerSession -ScriptBlock { Set-Acl -Path "\\$($using:Infrastructure[2].IpAddress)\homes$\$($using:UserPrincipleName)" -AclObject $using:ACL };
+        $ACL.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule("$SecurityPrincipal", "$NtfsPermission", "$Inheritance","$Propagation","$AccessControlType"))); # Create new access rule for Security Principal and add it to ACL
         
+        Set-Acl -Path "\\$($using:Infrastructure[2].IpAddress)\homes$\$($UserPrincipleName)" -AclObject ACL;
+            
+    }
 }
 
 
-# TO DO: CREATE SHARES DEPARTMENTS BASED ON OUS WITH PERMISSIONS
+# CREATE WITH DEPARTMENTS
+$folders = Import-Csv -Delimiter ";" -Path .\folders.csv; # Import Users from CSV file
+Invoke-Command -Session $FileServerSession -ScriptBlock {
+
+    foreach($Folder in $using:folders) 
+    {
+        if (-not (Test-Path -Path $Folder.Path ))
+        {
+            New-Item -ItemType Directory -Path $Folder.Path;
+           
+        }
+        $ACL = (Get-ACL $Folder.Path);
+        $SecurityPrincipal = $Folder.NtfsPermission.Split(':')[0];
+        $NtfsPermission = $Folder.NtfsPermission.Split(':')[1];
+        $Inheritance = $Folder.Inheritance;
+        $Propagation = $Folder.Propagation;
+        $AccessControlType = $Folder.AccessControlType;
+
+        $ACL.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule("$SecurityPrincipal", "$NtfsPermission", "$Inheritance","$Propagation","$AccessControlType"))); # Create new access rule for Security Principal and add it to ACL
+        
+
+        Set-Acl -Path $Folder.Path -AclObject $ACL; # Set ACL of share
+    }
+}
 

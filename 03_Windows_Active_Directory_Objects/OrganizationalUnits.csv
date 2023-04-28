@@ -9,4 +9,4 @@ Manufacturing;OU=intranet
 Marketing;OU=intranet
 Test;OU=intranet
 Projects;OU=intranet
-ProjectAdmins;OU=Projects,OU=intranet
+ProjectAdmins;OU=Projects

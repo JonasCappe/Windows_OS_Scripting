@@ -7,13 +7,14 @@ Addison;Soans;Board;Howest123#;Vice President - Projects;ABC;GG-BOARD,GG-PROJECT
 Mark;Davis;Board;Howest123#;Vice President - Engineering;ABC;GG-BOARD,GG-Engineering
 Brent;Howson;Board;Howest123#;Vice President - Manufacturing;ABC;GG-BOARD,GG-MANUFACTURING
 Gwendy;;Projects;Howest123#;Project Admin;ABC;GG-PROJECT-ADMINS
-Cristo;;Engineering;Howest123#;System Engineering;ABC;GG-ENGINEERING
-Danny;;Engineering;Howest123#;Electronic Engineering;ABC;GG-ENGINEERING
-Mark;;Engineering;Howest123#;Software Engineering;ABC;GG-ENGINEERING
-Holmen;;Engineering;Howest123#;Mechanical Engineering;ABC;GG-ENGINEERING
-Kathen;;Manufacturing;Howest123#;Assembly Manager;ABC;GG-MANUFACTURING
-Drahman;;Manufacturing;Howest123#;Testing Manager;ABC;GG-MANUFACTURING
-Brown;;Manufacturing;Howest123#;Production Manager;ABC;GG-MANUFACTURING
+
+Cristo;;Engineering;Howest123#;System Engineering;ABC;GG-SYSTEMENGINEER
+Danny;;Engineering;Howest123#;Electronic Engineering;ABC;GG-ELECTRONICENGINEER
+Mark;;Engineering;Howest123#;Software Engineering;ABC;GG-SOFTWAREENGINEER
+Holmen;;Engineering;Howest123#;Mechanical Engineering;ABC;GG-MECHANICALENGINEER
+Kathen;;Manufacturing;Howest123#;Assembly Manager;ABC;GG-ASSEMBLY
+Drahman;;Manufacturing;Howest123#;Testing Manager;ABC;GG-TESTING
+Brown;;Manufacturing;Howest123#;Production Manager;ABC;GG-PRODUCTION
 Ahmed;Sadak;Projects;Howest123#;Project Manager;ABC;GG-PROJECTS,GG-PROJECTA
 Amenthi;Mohan;Projects;Howest123#;Project Manager;ABC;GG-PROJECTS,GG-PROJECTB
 Bridget;Hiagley;Projects;Howest123#;Project Manager;ABC;GG-PROJECTS,GG-PROJECTB

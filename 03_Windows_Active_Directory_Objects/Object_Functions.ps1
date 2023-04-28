@@ -135,7 +135,7 @@ function Add-UsersInAD
         {
             $Displayname = $Givenname + "." + $Surname;
         }
-        $UPNUser = $Displayname+$UPN;
+        $UPNUser = "$($Displayname)$($UPN)";
         $Title = $User.JobTitle
         $Password = $User.Password
         $Department = $User.Department
@@ -163,9 +163,6 @@ function Add-UsersInAD
             -AccountPassword (ConvertTo-SecureString $Password -AsPlainText -Force) `
             -Enabled $true `
             -ChangePasswordAtLogon $false `
-            -PasswordNeverExpires $true `
-            -UserPrincipalName $UpnUser `
-            -EmailAddress $UpnUser `
             -Path $Path `
             -HomeDirectory $HomeDir `
             -ProfilePath $Profile;
