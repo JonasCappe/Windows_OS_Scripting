@@ -1,3 +1,5 @@
 Name;Path;FolderPermissions;NtfsPermission;Inheritance;Propagation;AccessControlType
-Profiles$;C:\profiles;Everyone;Domain Admins:FullControl,Authenticated Users:ReadAndExecute|Synchronize;None;NoPropagateInherit;Allow
-Menus$;C:\Menus;Everyone;Domain Admins:FullControl,Authenticated Users:ReadAndExecute|Synchronize;None;NoPropagateInherit;Allow
+Profiles$;C:\profiles;Everyone;Domain Admins:FullControl;ContainerInherit,ObjectInherit;None;Allow
+Profiles$;C:\profiles;Everyone;Authenticated Users:ReadAndExecute,Synchronize;ContainerInherit, ObjectInherit;None;Allow
+Menus$;C:\Menus;Everyone;Domain Admins:FullControl;ContainerInherit, ObjectInherit;None;Allow
+Menus$;C:\Menus;Everyone;Authenticated Users:ReadAndExecute,Synchronize;ContainerInherit, ObjectInherit;None;Allow

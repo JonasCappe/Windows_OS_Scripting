@@ -1,5 +1,3 @@
-
-
 # ~ GLOBAL VARIABLES ====================================================================================================
 
 $Infrastructure = @(
@@ -18,7 +16,9 @@ $Infrastructure = @(
 ); # Remote machines
 $UPN = "mct.be" # UPN suffix
 $RemotePath = "C:\temp"; # Remote path
+$DistinguishedPath = ""; # Distinguished path
 
+# ~ PREPARE REMOTING ====================================================================================================
 Write-Host "Preparing remoting on the local machine...";
 # Check if the WMI service is running
 if ((Get-Service -Name "Winmgmt").Status -ne "Running") {
@@ -28,16 +28,17 @@ if ((Get-Service -Name "Winmgmt").Status -ne "Running") {
 }
 
 $TrustedHosts = Get-Item WSMan:\localhost\Client\TrustedHosts | Select-Object -ExpandProperty Value; # Get the trusted hosts for remoting on the local machine
-if(!($TrustedHosts -eq "192.168.1.4") -or $null -eq $TrustedHosts) # Check if the trusted hosts are set to the correct value
+if(!($TrustedHosts -eq "192.168.1.*") -or $null -eq $TrustedHosts) # Check if the trusted hosts are set to the correct value
 {
-    Set-Item WSMan:\localhost\Client\TrustedHosts -Credential (Get-Credential -Message "Credential for local machine" -UserName "intranet\administrator") -Value "192.168.1.4" -Force; # Set the trusted hosts for remoting on the local machine
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Credential (Get-Credential -Message "Credential for local machine" -UserName "intranet\administrator") -Value "192.168.1.*" -Force; # Set the trusted hosts for remoting on the local machine
 }
+$Credential = (Get-Credential -Message "Enter credentials for remoteservers" -UserName "intranet\Administrator");
+# ~ CREATE SESSIONS ====================================================================================================
+$PrimaryDomainControllerSession = New-PSSession -ComputerName $Infrastructure[0].IpAddress -Credential $Credential;
+$FileServerSession = New-PSSession -ComputerName $Infrastructure[2].IpAddress -Credential $Credential;
+$SecondaryDomainController = New-PSSession -ComputerName $Infrastructure[1].IpAddress -Credential $Credential;
 
 # ~ Add UPN suffix ====================================================================================================
-$PrimaryDomainControllerSession = New-PSSession -ComputerName $Infrastructure[0].IpAddress -Credential (Get-Credential -Message "Enter credentials for $($Infrastructure[0].Name)" -UserName "intranet\Administrator");
-
-
-
 Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
     # Create UPN suffix
     Get-ADForest | Set-ADForest -UPNSuffixes @{add="$using:UPN"}; # Add UPN suffix to Active Directory
@@ -46,7 +47,7 @@ Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
 
 # ~ Create Shares ==================================================================================================
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process;
-Set-Location "C:\Users\user\Desktop\Scripts\03_Windows_Active_Directory_Objects\";
+Set-Location "C:\Users\user\Desktop\NewScripts\";
 . ".\Object_Functions.ps1";
 
 Add-Shares -SourceFile ".\SharesDc2.csv" -DestinationServer $Infrastructure[1].IpAddress; # Add shares to DC2
@@ -56,17 +57,15 @@ Add-Shares -SourceFile ".\SharesFileServer.csv" -DestinationServer $Infrastructu
 # Copy script & CSV's to Primary Domain Controller (DC1), for remote execution
 Copy-Item -ToSession $PrimaryDomainControllerSession -Path ".\*" -Destination $RemotePath; # Copy script to Primary Domain Controller
 
-Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
+$DistinguishedPath = Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
     Set-Location $using:RemotePath;
     . ".\Object_Functions.ps1";
-    $DistinguishedPath = ((Get-ADForest | Select-Object -ExpandProperty PartitionsContainer).Split(',') | Where-Object { $_ -like "DC=*" }) -join ","; # Get distinguished path
+    $Path = ((Get-ADForest | Select-Object -ExpandProperty PartitionsContainer).Split(',') | Where-Object { $_ -like "DC=*" }) -join ","; # Get distinguished path
 
-    Add-OrganizationalUnits -SourceFile ".\OrganizationalUnits.csv" -DistinguishedPath $DistinguishedPath; # Add Organizational Units to DC1
-    Add-GroupsInAD -SourceFile ".\Groups.csv" -DistinguishedPath $DistinguishedPath; # Add groups to DC1
+    Add-OrganizationalUnits -SourceFile ".\OrganizationalUnits.csv" -DistinguishedPath $using:DistinguishedPath; # Add Organizational Units to DC1
+    Add-GroupsInAD -SourceFile ".\Groups.csv" -DistinguishedPath $using:DistinguishedPath; # Add groups to DC1
+    return $Path;
 }
-
-$FileServerSession = New-PSSession -ComputerName $Infrastructure[2].IpAddress -Credential (Get-Credential -Message "Enter credentials for $($Infrastructure[2].Name)" -UserName "intranet\Administrator");
-$SecondaryDomainController = New-PSSession -ComputerName $Infrastructure[1].IpAddress -Credential (Get-Credential -Message "Enter credentials for $($Infrastructure[1].Name)" -UserName "intranet\Administrator");
 
 # ~ Users ======================================================================================================================
 # CREATE HOME AND RPOFILES
@@ -74,32 +73,51 @@ $Users = Import-Csv -Delimiter ";" -Path .\Users.csv; # Import Users from CSV fi
 
 foreach($user in $Users)
 {
-    if($User.Lastname -like "")
+    $DisplayName = (Get-UserDisplayName -UserFirstName $User.FirstName -UserLastname $User.Lastname); # Get display name
+
+    # Create root share for home folders if it doesn't exist
+    if (-not (Invoke-Command -ScriptBlock { Test-Path -Path $args[0] } -ArgumentList "\\$($Infrastructure[2].IpAddress)\homes$\$($Displayname)" -Session $FileServerSession))
     {
-        $Displayname = $User.Firstname
-    }
-    else
-    {
-        $Displayname = "$($User.Firstname).$($User.Lastname)";
+        Invoke-Command -ScriptBlock { New-Item -ItemType Directory -Path $args[0] -Force } -ArgumentList "\\$($Infrastructure[2].IpAddress)\homes$\$($Displayname)" -Session $FileServerSession;
     }
 
-    if (-not (Invoke-Command -ScriptBlock { Test-Path -Path $args[0] } -ArgumentList "\\192.168.1.4\homes$\$($Displayname)" -Session $FileServerSession))
+    # Create root share for roaming user profiles folders if it doesn't exist
+    if (-not (Invoke-Command -ScriptBlock { Test-Path -Path $args[0] } -ArgumentList "\\$($Infrastructure[1].IpAddress)\profiles$\$($Displayname)" -Session $SecondaryDomainController))
     {
-        Invoke-Command -ScriptBlock { New-Item -ItemType Directory -Path $args[0] -Force } -ArgumentList "\\192.168.1.4\homes$\$($Displayname)" -Session $FileServerSession;
-    }
-
-    if (-not (Invoke-Command -ScriptBlock { Test-Path -Path $args[0] } -ArgumentList "\\192.168.1.3\profiles$\$($Displayname)" -Session $SecondaryDomainController))
-    {
-        Invoke-Command -ScriptBlock { New-Item -ItemType Directory -Path $args[0] -Force } -ArgumentList "\\192.168.1.3\profiles$\$($Displayname)" -Session $SecondaryDomainController;
+        Invoke-Command -ScriptBlock { New-Item -ItemType Directory -Path $args[0] -Force } -ArgumentList "\\$($Infrastructure[1].IpAddress)\profiles$\$($Displayname)" -Session $SecondaryDomainController;
     }
 }
 
+# ~ CREATE USERS ======================================================================================================================
+# TODO: CLEAN UP CODE
 Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
     Set-Location $using:RemotePath;
     . ".\Object_Functions.ps1";
-    $DistinguishedPath = ((Get-ADForest | Select-Object -ExpandProperty PartitionsContainer).Split(',') | Where-Object { $_ -like "DC=*" }) -join ",";
-    Add-UsersInAD -SourceFile ".\Users.csv" -DistinguishedPath $DistinguishedPath -HomePath "\\192.168.1.4\homes$\" -ProfilePath "\\192.168.1.3\profiles$\" ; # Add users to DC1
+    Add-UsersInAD -SourceFile ".\Users.csv" -DistinguishedPath $using:DistinguishedPath -HomePath "\\192.168.1.4\homes$\" -ProfilePath "\\192.168.1.3\profiles$\" ; # Add users to DC1
+}
+
+# Retrieve user priciple names
+$UserPrincipleNames = Invoke-Command -ScriptBlock { return (Get-ADUser -Filter * -SearchBase "ou=intranet,dc=intranet,dc=mct,dc=be" | Select-Object -ExpandProperty UserPrincipalName) } -Session $PrimaryDomainControllerSession;
+
+# Set permission on home folder
+foreach($UserPrincipleName  in $UserPrincipleNames)
+{
+    $ACL = Invoke-Command -Session $FileServerSession -ScriptBlock { return (Get-ACL "\\$($using:Infrastructure[2].IpAddress)\homes$\$($using:UserPrincipleName)") };
+    ## Enable inheritance and copy permissions
+    $ACL.SetAccessRuleProtection($False, $True);
+    # Setting Modify for the User account
+    $SecurityPrincipal = $UserPrincipleName;
+    $NtfsPermission = "Modify";
+    $Inheritance = "ContainerInherit, ObjectInherit";
+    $Propagation = "None";
+    $AccessControlType = "Allow";
+
+    $ACL.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule("$SecurityPrincipal", "$NtfsPermission", "$Inheritance","$Propagation","$AccessControlType"))); # Create new access rule for Security Principal and add it to ACL
+    
+    Invoke-Command -Session $FileServerSession -ScriptBlock { Set-Acl -Path "\\$($using:Infrastructure[2].IpAddress)\homes$\$($using:UserPrincipleName)" -AclObject $using:ACL };
+        
 }
 
 
 # TO DO: CREATE SHARES DEPARTMENTS BASED ON OUS WITH PERMISSIONS
+

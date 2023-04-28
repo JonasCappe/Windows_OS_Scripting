@@ -1,0 +1,6 @@
+Path;FolderPermissions;NtfsPerm
+C:\ABC;;Everyone;Domain Admins:FullControl,Authenticated Users:ReadAndExecute|Synchronize;;None;NoPropagateInherit;Allow
+C:\Board;;Everyone;Domain Admins:FullControl,DLG-BOARD:ReadAndExecute|Synchronize;;None;NoPropagateInherit;Allow
+C:\Engineering;;Everyone;Domain Admins:FullControl,DLG-ENGINEERING:ReadAndExecute|Synchronize;;None;NoPropagateInherit;Allow
+C:\Marketing;;Everyone;Domain Admins:FullControl,DLG-MARKETING:ReadAndExecute|Synchronize;;None;NoPropagateInherit;Allow
+C:\Finance;;Everyone;Domain Admins:FullControl,DLG-FINANCE:ReadAndExecute|Synchronize;;None;NoPropagateInherit;Allow

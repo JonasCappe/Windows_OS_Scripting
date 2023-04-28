@@ -36,46 +36,37 @@ function Add-Shares
     $Shares = Import-Csv -Delimiter ";" -Path $SourceFile; # Import Shares from CSV file
     foreach($Share in $Shares)
     {
-        if (-not (Invoke-Command -ScriptBlock { Test-Path -Path $args[0] } -ArgumentList $Share.Path -Session $ServerSession))
+        if (-not (Invoke-Command -ScriptBlock { Test-Path -Path $args[0] } -ArgumentList $Share.Path -Session $ServerSession)) # Check if path exists, if not create it
         {
             Invoke-Command -ScriptBlock { New-Item -ItemType Directory -Path $args[0] -Force } -ArgumentList $Share.Path -Session $ServerSession;
         }
+        
         #Check if share already exists, if not create it
-        if (-not (Invoke-Command -ScriptBlock { Get-SmbShare -Name $args[0] -ErrorAction SilentlyContinue } -ArgumentList $Share.Name -Session $ServerSession))
+        if ($null -eq (Invoke-Command -ScriptBlock { Get-SmbShare -Name $args[0] -ErrorAction SilentlyContinue } -ArgumentList $Share.Name -Session $ServerSession))
         {
-            Invoke-Command -Session $ServerSession -ScriptBlock { New-SmbShare -Name $using:Share.Name -Path $using:Share.Path -FullAccess $using:Share.FolderPermissions};
+            Invoke-Command -Session $ServerSession -ScriptBlock { 
+                New-SmbShare -Name $using:Share.Name -Path $using:Share.Path -FullAccess $using:Share.FolderPermissions
+
+                $ACL = Get-Acl -Path "\\$($using:DestinationServer)\$($using:Share.Name)"; # Get ACL of share
+                $ACL.SetAccessRuleProtection($true, $false); # Disable inheritance
+                $ACL.Access | ForEach-Object { $ACL.RemoveAccessRule($_) } # Remove all access rules
+            };
         }
         else
         {
             Write-Host "Share $Share.Name already exists";
         }
         # Set ACL of share, remove all access rules and add specified access rules
-        Invoke-Command -Session $ServerSession -ScriptBlock { 
-            $ACL = Get-Acl -Path "\\$($using:DestinationServer)\$($using:Share.Name)"; # Get ACL of share
-            $ACL.SetAccessRuleProtection($true, $false); # Disable inheritance
-            $ACL.Access | ForEach-Object { $ACL.RemoveAccessRule($_) } # Remove all access rules
-
+        Invoke-Command -Session $ServerSession -ScriptBlock {
+            
             $Share = $using:Share;
-            $Security = $Share.NtfsPermission.split(",")[0].Split(":");
-            $NtfsPermission = $Share.NtfsPermission.split(",")[1].Split(":").replace("|",",");
-            foreach($Permission in $Share.NtfsPermission.split(",")) # Loop through all permissions, to create access rules
-            {
-                $SecurityPrincipal = $Permission.split(":")[0]; # Get Security Principal
-                $NtfsPermission = $Permission.split(":")[1].replace("|",","); # Get Ntfs Permission
-                if($SecurityPrincipal -like "*Admins*") # IF admin overwrite LP settings
-                {
-                    $Inheritance = "ContainerInherit, ObjectInherit";
-                    $Propagation = "None";
-                }
-                else
-                {
-                    $Inheritance = $Share.Inheritance;
-                    $Propagation = $Share.Propagation;
-                }
-                
-                $AccessControlType = $Share.AccessControlType;
-                $ACL.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($SecurityPrincipal, "$NtfsPermission", "$Inheritance","$Propagation","$AccessControlType"))); # Create new access rule for Security Principal and add it to ACL
-            }
+            $SecurityPrincipal = $Share.NtfsPermission.Split(":")[0];
+            $NtfsPermission = $Share.NtfsPermission.Split(":")[1];
+            $Inheritance = $Share.Inheritance;
+            $Propagation = $Share.Propagation;
+            $AccessControlType = $Share.AccessControlType;
+            $ACL.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule("$SecurityPrincipal", "$NtfsPermission", "$Inheritance","$Propagation","$AccessControlType"))); # Create new access rule for Security Principal and add it to ACL
+            
             Set-Acl -Path "\\$($using:DestinationServer)\$($using:Share.Name)" -AclObject $ACL; # Set ACL of share
         }
     }
@@ -173,6 +164,8 @@ function Add-UsersInAD
             -Enabled $true `
             -ChangePasswordAtLogon $false `
             -PasswordNeverExpires $true `
+            -UserPrincipalName $UpnUser `
+            -EmailAddress $UpnUser `
             -Path $Path `
             -HomeDirectory $HomeDir `
             -ProfilePath $Profile;
@@ -328,4 +321,26 @@ function Add-OrganizationalUnits
     {
         Write-Error $_.Exception.Message
     }
+}
+
+function Get-UserDisplayName
+{
+    param
+    (
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true,position=0)]
+        [ValidateNotNullOrEmpty()]
+        [string]$UserFirstName,
+        [Parameter(Mandatory=$false, ValueFromPipeline=$true,position=1)]
+        [string]$UserLastName=""
+    );
+    
+    if($User.Lastname -like "") # 
+    {
+        $Displayname = $UserFirstName;
+    }
+    else
+    {
+        $Displayname = "$($UserFirstName).$($UserLastName)";
+    }
+    return $DisplayName;
 }

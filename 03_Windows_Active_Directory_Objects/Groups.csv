@@ -2,7 +2,7 @@ GroupName;Scope;Category;MemberOf;Path
 DLG-FINANCE;DomainLocal;Security;;OU=Finance,OU=intranet
 GG-FINANCE;Global;Security;DLG-FINANCE;OU=Finance,OU=intranet
 DLG-HR;DomainLocal;Security;;OU=Hr,OU=intranet
-GG-HR;Global;Security;DLG-HR;;OU=Hr,OU=intranet
+GG-HR;Global;Security;DLG-HR;OU=Hr,OU=intranet
 DLG-BOARD;DomainLocal;Security;;OU=Board,OU=intranet
 GG-BOARD;Global;Security;DLG-BOARD;OU=Board,OU=intranet
 DLG-MARKETING;DomainLocal;Security;;OU=Marketing,OU=intranet
