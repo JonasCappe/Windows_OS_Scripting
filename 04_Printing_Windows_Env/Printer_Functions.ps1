@@ -22,15 +22,19 @@ function Move-SpoolFolder
         [ValidateNotNullOrEmpty()]
         [string]$NewSpoolerPath
     );
+    $CurrentSpoolFolder = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers").DefaultSpoolDirectory;
 
     if(-not (Test-Path -Path "$NewSpoolerPath" -PathType Container)) # Check if the new spooler path exists
     {
         New-Item -Path "$NewSpoolerPath" -ItemType Directory -Force; # Create the new spooler path if it doesn't exist
+
+        Get-Acl $CurrentSpoolFolder | Set-Acl $NewSpoolerPath;
     }
 
     Start-Transaction # Start transaction to undo changes if something goes wrong
     try 
     {
+        
         # Check if the spooler service is running
         if ((Get-Service -Name Spooler).Status -eq "Running")
         {
@@ -38,10 +42,10 @@ function Move-SpoolFolder
             Stop-Service -Name Spooler # Stop the Spooler service
         }
 
-        Move-Item -Path "C:\Windows\System32\spool\" -Destination $NewSpoolerPath -Force # Move the spool folder to the new location
+        Move-Item -Path $CurrentSpoolFolder\*.* -Destination $NewSpoolerPath -Force # Move the spool folder to the new location
 
         # Update the registry to point to the new location
-        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers" -Name "SpoolDirectory" -Value $NewSpoolerPath
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers" -Name "DefaultSpoolDirectory" -Value $NewSpoolerPath
         Start-Service -Name Spooler # Start the Spooler service
 
         Complete-Transaction
@@ -95,40 +99,33 @@ function Install-PrintDriver # Manually download and extract a printer driver, e
     
     try 
     {
-        Set-Location $DownloadPath; # Change the current directory to the download path
-        Invoke-WebRequest -Uri "$DownloadUrl" -OutFile "$PrintDriverName"; # Download the driver from the URL
+        
+       
 
-        if (Test-Archive -Path "$DownloadPath\$PrintDriverName") # If downloaded file is a zip archive, extract it
+        if (-not (Get-PrinterDriver -Name "HP Universal Printing PCL 6" -ErrorAction SilentlyContinue)) 
         {
+            Set-Location $DownloadPath; # Change the current directory to the download path
+            Invoke-WebRequest -Uri "$DownloadUrl" -OutFile "$PrintDriverName"; # Download the driver from the URL
+
+        
             Write-Host "Extracting the zip file...";
             $PrintDriverName = Expand-ZipFile -DownloadPath $DownloadPath -PrintDriverName $PrintDriverName; # Get the full path to the driver executable 
-        }
+            Write-Host "The print driver name is '$PrintDriverName'" -ForegroundColor Cyan;
+            #Start-Process -FilePath C:\Windows\System32\DriverStore\FileRepository\hpbuio200l.inf_amd64_6be9e1f0605d9be3\hpbuio200l.inf -ArgumentList "/s /v/qn /l*v $DownloadPath\Install.log" -Wait; # # Install the driver, install silently (/s), without displaying any dialogs, and to create a verbose log file in the specified path and filename (/lv $DownloadPath\Install.log).
 
-        if (-not (Get-PrinterDriver -Name $PrintDriverName -ErrorAction SilentlyContinue)) 
-        {
-            Start-Process -FilePath $PrintDriverName -ArgumentList "/s /v/qn /l*v $DownloadPath\Install.log" -Wait; # # Install the driver, install silently (/s), without displaying any dialogs, and to create a verbose log file in the specified path and filename (/lv $DownloadPath\Install.log).
+            # Add to Driver store - C:\Windows\System32\DriverStore
+            PNPUtil.exe -i -a $PrintDriverName;
+            Add-PrinterDriver -Name "HP Universal Printing PCL 6" -Verbose;
         }
         else 
         {
-            Write-Warning "The printer driver already exists: $PrintDriverName";
+            Write-Warning "The printer driver already exists: HP Universal Printing PCL 6";
         }
     }
     catch 
     {
         Write-Error "Could not download and extract the printer driver: $_";
-    }
-
-    # Check if the driver was installed successfully
-    if (Get-PrinterDriver -Name $PrintDriverName -ErrorAction SilentlyContinue) 
-    {
-        Write-Host "The printer driver $PrintDriverName was installed successfully.";
-       
-    }
-    else 
-    {
-        Write-Error "The printer driver $PrintDriverName was not installed.";
-    }
-        
+    }    
 }
 # TODO: Let user know what is happening
 
@@ -158,11 +155,14 @@ function Expand-ZipFile
         [ValidateNotNullOrEmpty()]
         [string]$PrintDriverName
     );
-    $ZipPath = Join-Path -Path $DownloadPath -ChildPath $PrintDriverName; # Get the full path to the zip file
-    $ExtractPath = Join-Path -Path $DownloadPath -ChildPath ($PrintDriverName -replace '\.zip$',''); # Get the full path to the folder where the zip file will be extracted
+    $NewName = $PrintDriverName.Replace(".exe",".zip");
+    Rename-Item -path (Join-Path -Path $DownloadPath -ChildPath $PrintDriverName) -NewName $NewName;
+    $ZipPath = Join-Path -Path $DownloadPath -ChildPath $NewName; # Get the full path to the zip file
+    $ExtractPath = Join-Path -Path $DownloadPath -ChildPath ($NewName -replace '\.zip$',''); # Get the full path to the folder where the zip file will be extracted
+    
     Expand-Archive -Path $ZipPath -DestinationPath $ExtractPath -Force; # Extract the zip file
-    Remove-Item -Path "$DownloadPath\$PrintDriverName" -Force; # Remove the zip file
-    return (Get-ChildItem -Path $ExtractPath -Recurse -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName); # Get the full path to the driver executable
+    Remove-Item -Path "$DownloadPath\$NewName" -Force; # Remove the zip file
+    return (Get-ChildItem -Path $ExtractPath -Recurse -Filter "*.inf" | Where-Object { $_.Name -notlike "Autorun.inf" } |  Select-Object -First 1 -ExpandProperty DirectoryName)+"\*.inf"; # Get the full path to the driver executable
 }
 
 function Test-Archive  # Check if a file is a zip archive, weird gimmick with executable print HP Universal printer driver
@@ -186,6 +186,17 @@ function Test-Archive  # Check if a file is a zip archive, weird gimmick with ex
         [ValidateNotNullOrEmpty()]
         [string]$Path
     );
+
+    # IF ZipArchive is not loaded, load in assembly
+    try
+    {
+        [System.IO.Compression.ZipArchive] | Out-Null
+    }
+    catch
+    {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+    }
+
     
     try 
     {
@@ -243,9 +254,8 @@ function Test-PrinterSettings
     )
 
     # Check if hash table has correct keys: name, drivername, portname, portnumber, portprotocol, ipaddress, driverpath, sharename, location
-    $Keys = @("Name","DriverName","PortName","PortNumber","PortProtocol","IPAddress","DriverPath","ShareName","Location");
-    $Keys | ForEach-Object
-    {
+    $Keys = @("Name","DriverName", "PrinterDriver","PortProtocol","IPAddress","DownloadPath","ShareName","Location");
+    $Keys | ForEach-Object {
         if(-not $PrinterSettings.ContainsKey($_))
         {
             Write-Error "The hash table does not contain the key $_";
@@ -371,38 +381,38 @@ function Add-NetworkPrinter
     
         
     
-    $PrinterSettings | ForEach-Object
-    {
+    $PrinterSettings | ForEach-Object {
         # Check if hash table has correct keys: name, drivername, portname, portnumber, portprotocol, ipaddress, driverpath, sharename, location
-        if((Test-PrinterSettings -PrinterSettings $_) -and (-not (Test-PrinterExistence -PrinterSettings $_))) # Check if the printer settings are valid and if the printer exists
+        if((Test-PrinterSettings -PrinterSettings $_) -and (-not (Test-PrinterExistence -PrinterName $_.Name))) # Check if the printer settings are valid and if the printer exists
         {
+            Add-PrinterPort -Name "$($_.IpAddress)_$($_.PortProtocol)Port" -PrinterHostAddress $_.IpAddress -ErrorAction SilentlyContinue -Verbose
             
             if($_.StartTime -and $_.EndTime) # Check if the printer has a start and end time, if so Add-PrinterDriver with the -StartTime and -UntilTime parameters
             {
-                Add-Printer -ConnectionName "\\$($_.IPAddress)\$($_.ShareName)" `
-                -Name $_.Name `
-                -DriverName $_.DriverName `
+                Add-Printer -Name $_.Name `
+                -DriverName $_.PrinterDriver `
+                -Shared `
                 -ShareName $_.ShareName `
-                -PortName $_.PortName `
-                -Location $_.Locationn
+                -PortName "$($_.IpAddress)_$($_.PortProtocol)Port" `
+                -Location $_.Location `
                 -StartTime $_.StartTime `
                 -UntilTime $_.EndTime;
             }
             else # Add the printer without the -StartTime and -UntilTime parameters
             {
-                Add-Printer -ConnectionName "\\$($_.IPAddress)\$($_.ShareName)" `
-                -Name $_.Name `
-                -DriverName $_.DriverName `
+                Add-Printer -Name $_.Name `
+                -DriverName $_.PrinterDriver `
+                -Shared `
                 -ShareName $_.ShareName `
-                -PortName $_.PortName `
-                -Location $_.Locationn;
+                -PortName "$($_.IpAddress)_$($_.PortProtocol)Port" `
+                -Location $_.Location;
             }
         
             # Share the printer with Everyone
-            New-SharedPrinter -PrinterName $_.Name;
+            #New-SharedPrinter -PrinterName $_.Name;
         
             # Check if the printer was installed successfully
-            Test-PrinterExistence -PrinterSettings $_;
+            Test-PrinterExistence -PrinterName $_.Name;
         }
     }
 }
@@ -433,11 +443,24 @@ function Remove-UnusedPrinter
    
     if (Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue)  # If the printer exists
     {
-        Remove-Printer -Name $PrinterName -Force; # Remove the printer
+        Start-Transaction;
+        try
+        {
+            $PrinterPorts = (Get-Printer | Where-Object { $_.Name -like $PrinterName } | Select-Object -ExpandProperty PortName).Split(',');
+            
+            Write-Host "Removing printer $PrinterName ..."
+            Remove-Printer -Name $PrinterName -ErrorAction Stop; # Remove the printer
 
-        # Retrieve the printer ports that are not used by any printer
-        $UnusedPorts = Get-PrinterPort | Where-Object { $null -eq $_.PrinterName };
-        $UnusedPorts | ForEach-Object { Remove-PrinterPort -Name $_.Name -Force }; # Remove the unused printer ports
+            Write-Host "Removing printer port $PrinterPort ..."
+            $PrinterPorts | ForEach-Object { Remove-PrinterPort -Name $_ -ErrorAction Stop }; # Remove the unused printer ports
+            
+        }
+        catch
+        {
+            Undo-Transaction;
+            Write-Error "Could not remove printer and/or port(s) $_";
+        }
+        Complete-Transaction;
     }
     else {
         Write-Warning "The printer $PrinterName does not exist";
@@ -455,12 +478,25 @@ function Add-PrinterPool
         [array]$Ports,
         [Parameter(Mandatory=$true,ValueFromPipeline=$true,Position=2)]
         [ValidateNotNullOrEmpty()]
-        [array]$PrintDriverName
+        [string]$PrintDriverName
     );
-
-    $ports | ForEach-Object { Add-PrinterPort -Name "IP_$_" -PrinterHostAddress $_ };
-    Add-Printer -Name "$PoolName" -DriverName "$PrintDriverName" -PortName "$Ports" -Shared $true
+    $NewPorts = @();
     
+
+    if(-not(Get-Printer -Name $PoolName -ErrorAction SilentlyContinue))
+    {
+        $ports | ForEach-Object {
+       
+            $NewPorts +=  "$($_)_TCPPORT";
+            if(-not(Get-PrinterPort -Name "$($_)_TCPPORT" -ErrorAction SilentlyContinue))
+            {
+                Add-PrinterPort -Name "$($_)_TCPPORT" -PrinterHostAddress $_;
+            }
+        };
+        write-host "Creating printer pool for '$PoolName' ..."
+        $NewPorts = ($NewPorts -Join ',');
+        Add-Printer -DriverName $PrintDriverName -Name $PoolName -PortName $NewPorts;
+    }   
 }
 
 
