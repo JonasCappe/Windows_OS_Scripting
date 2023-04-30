@@ -8,13 +8,24 @@ param(
 );
 
 
-# Remove the DFS Replication group
-Remove-DfsReplicationGroup -CimSession $Session -GroupName $GroupName -Force
+Invoke-Command -Session $Session -ScriptBlock {
 
-# Get the members of the DFS Replication group
-$Members = Get-DfsrMember -GroupName $GroupName -CimSession $Session
 
-# Remove each member from the DFS Replication group
-$Members | ForEach-Object {
-    Remove-DfsReplicationMember -GroupName $GroupName -ComputerName $_.ComputerName -Force -CimSession $Session
+    # Remove connection(s)
+    Get-DfsrConnection -GroupName $using:GroupName | Remove-DfsrConnection -Force;
+
+    # Remove ReplicatedFolder(s)
+    Get-DfsReplicatedFolder -GroupName | Remove-DfsReDfsReplicatedFolder -Force;
+
+    # Get the members of the DFS Replication group
+    $Members = Get-DfsrMember -GroupName $using:GroupName;
+    
+    # Remove each member from the DFS Replication group
+    $Members | ForEach-Object {
+        Remove-DfsrMember -GroupName $using:GroupName -ComputerName $_.ComputerName -Force;
+    }
+
+    # Remove the DFS Replication group
+    Remove-DfsReplicationGroup -GroupName $using:GroupName -Force;
+    
 }

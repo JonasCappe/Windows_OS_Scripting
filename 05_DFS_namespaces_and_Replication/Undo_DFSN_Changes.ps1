@@ -33,10 +33,11 @@ param(
     $Session
 );
 
-$Links | ForEach-Object 
-{
-    Remove-DfsnFolder -CimSession $Session -Path "\\$($Domain)\$($NameSpace)\$($_.LinkFolder)" -Force
-}
+Invoke-Command -Session $Session -ScriptBlock {
+    $using:Links | ForEach-Object {
+        Remove-DfsnFolder -Path "\\$($using:Domain)\$($using:NameSpace)\$($_.LinkFolder)" -Force
+    }
 
-# Remove the DFS namespace
-Remove-DfsnRoot -CimSession $Session -Path "\\$($Domain)\$($NameSpace)" -Force
+    # Remove the DFS namespace
+    Remove-DfsnRoot -Path "\\$($using:Domain)\$($using:NameSpace)" -Force
+}
