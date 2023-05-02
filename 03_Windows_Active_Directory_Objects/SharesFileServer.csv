@@ -1,5 +1,5 @@
 Name;Path;FolderPermissions;NtfsPermission;Inheritance;Propagation;AccessControlType
-Homes$;C:\homes;Everyone;Domain Admins:FullControl;ContainerInherit, ObjectInherit;None;Allow
+Homes$;C:\homes;Everyone;Administrator:FullControl;ContainerInherit, ObjectInherit;None;Allow
 Homes$;C:\homes;Everyone;Authenticated Users:ReadAndExecute,Synchronize;None;NoPropagateInherit;Allow
-ABC$;C:\ABC;Everyone;Domain Admins:FullControl;ContainerInherit, ObjectInherit;None;Allow
+ABC$;C:\ABC;Everyone;Administrator:FullControl;ContainerInherit, ObjectInherit;None;Allow
 ABC$;C:\ABC;Everyone;Domain Users:Modify;ContainerInherit, ObjectInherit;None;Allow

@@ -17,7 +17,7 @@ function Add-Shares
         CSV file should be formatted as follows:
         Name;Path;FolderPermissions;NtfsPermission
         Diffrerent permissions can be added by separating them with a comma.
-        Home$;C:\homes;Everyone;Domain Admins:Full Control,Authenticated Users:ReadAndExecute|SynchronizeProfiles$;C:\profiles;Everyone;Domain Admins:Full Control,Authenticated Users:ReadAndExecute|Synchronize
+        Home$;C:\homes;Everyone;Administrator:Full Control,Authenticated Users:ReadAndExecute|SynchronizeProfiles$;C:\profiles;Everyone;Administrator:Full Control,Authenticated Users:ReadAndExecute|Synchronize
 
     #>
     param

@@ -101,8 +101,9 @@ $UserPrincipleNames = Invoke-Command -ScriptBlock { return (Get-ADUser -Filter *
 
 Invoke-Command -Session $FileServerSession -ScriptBlock {
     # Set permission on home folder
-    foreach($UserPrincipleName  in $UserPrincipleNames)
+    foreach($UserPrincipleName in $using:UserPrincipleNames)
     {
+        Write-Host "\\$($using:Infrastructure[2].IpAddress)\homes$\$($UserPrincipleName)"
         $ACL = (Get-ACL "\\$($using:Infrastructure[2].IpAddress)\homes$\$($UserPrincipleName)");
         ## Enable inheritance and copy permissions
         $ACL.SetAccessRuleProtection($False, $True);
@@ -115,7 +116,7 @@ Invoke-Command -Session $FileServerSession -ScriptBlock {
     
         $ACL.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule("$SecurityPrincipal", "$NtfsPermission", "$Inheritance","$Propagation","$AccessControlType"))); # Create new access rule for Security Principal and add it to ACL
         
-        Set-Acl -Path "\\$($using:Infrastructure[2].IpAddress)\homes$\$($UserPrincipleName)" -AclObject ACL;
+        Set-Acl -Path "\\$($using:Infrastructure[2].IpAddress)\homes$\$($UserPrincipleName)" -AclObject $ACL;
             
     }
 }
