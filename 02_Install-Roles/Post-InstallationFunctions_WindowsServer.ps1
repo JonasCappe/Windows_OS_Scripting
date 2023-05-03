@@ -319,7 +319,7 @@ function Enable-RemoteDesktop
         
         # Enable RDP and allow RDP through firewall
         Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-Name "fDenyTSConnections" -Value 0 ;
-        Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name “UserAuthentication” -Value 1;
+        Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name "fDenyTSConnections" -Value 1;
         Write-Host "Enabled Remote Desktop...";
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop";
         Write-Host "Allowed RDP trough firewall...";
@@ -339,7 +339,7 @@ function Disable-RemoteDesktop
     {
         # Disable RDP and remove RDP from firewall
         Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-Name "fDenyTSConnections" -Value 1 ;
-        Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name “UserAuthentication” -Value 0;
+        Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\' -Name "fDenyTSConnections" -Value 0;
         Write-Host "Disabled Remote Desktop...";
         Disable-NetFirewallRule -DisplayGroup "Remote Desktop";
         Write-Host "Removed RDP from firewall...";

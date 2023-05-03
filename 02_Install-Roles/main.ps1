@@ -1,4 +1,7 @@
 
+# Run as Administrator
+# Enable-PSRemoting;
+# Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass;
 Write-Host "Preparing remoting on the local machine...";
 # Check if the WMI service is running
 if ((Get-Service -Name "Winmgmt").Status -ne "Running") {
@@ -13,23 +16,26 @@ if(!($TrustedHosts -eq "192.168.1.*") -or $null -eq $TrustedHosts) # Check if th
     Set-Item WSMan:\localhost\Client\TrustedHosts -Credential (Get-Credential -Message "Credential for local machine")  -Value "192.168.1.*" -Force; # Set the trusted hosts for remoting on the local machine
 }
 
+
+
+
 # ~ Environment variables =======================================================================================
 # Remote devices to connect to
-$PrimaryDomainController = "192.168.1.121"; # Set the primary domain controller
-$SecondaryDomainController = "192.168.1.122"; # Set the secondary domain controller
+$PrimaryDomainController = "192.168.1.122"; # Set the primary domain controller
+$SecondaryDomainController = "192.168.1.123"; # Set the secondary domain controller
 $MemberServer = "192.168.1.120"; # Set the member server
 
 # script paths
 # Main script for installing the roles on a Windows Server
-$SourcePath1 = "C:\Users\user\Desktop\Scripts\Windows-Network-RelatedFunctions.ps1"; # Path to the script containing the functions, locally
+$SourcePath1 = ".\Windows-Network-RelatedFunctions.ps1"; # Path to the script containing the functions, locally
 $DestinationPath1 = "C:\temp\Windows-Network-RelatedFunctions.ps1"; # Path to the script containing the functions, remotely
 
 # Network related functions
-$SourcePath2 = "C:\Users\user\Desktop\Scripts\Install-Roles.ps1";
+$SourcePath2 = ".\Install-Roles.ps1";
 $DestinationPath2 = "C:\temp\Install-Roles.ps1";
 
 # Post-installation tasks
-$SourcePath3 = "C:\Users\user\Desktop\Scripts\Post-InstallationFunctions_WindowsServer.ps1";
+$SourcePath3 = ".\Post-InstallationFunctions_WindowsServer.ps1";
 $DestinationPath3 = "C:\temp\Post-InstallationFunctions_WindowsServer.ps1";
 
 # Remote path to the scripts
@@ -48,19 +54,19 @@ $SiteName = "INTRANET";
 # IP addresses configuration
 $NewSettings = @(
     @{
-        Name = "win03-dc1";
+        Name = "win13-dc1";
         IPAddress = "192.168.1.2";
         SubnetMask = "255.255.255.0";
         DefaultGateway = "192.168.1.1";
     },
     @{
-        Name = "win03-dc2";
+        Name = "win13-dc2";
         IPAddress = "192.168.1.3";
         SubnetMask = "255.255.255.0";
         DefaultGateway = "192.168.1.1";
     },
     @{
-        Name = "win03-ms";
+        Name = "wi103-ms";
         IPAddress = "192.168.1.4";
         SubnetMask = "255.255.255.0";
         DefaultGateway = "192.168.1.1";
@@ -90,8 +96,11 @@ Invoke-Command -Session $TargetSession  -ScriptBlock { # Execute the script on t
     
     # Then execute the scripts for loading the functions
     . ".\Post-InstallationFunctions_WindowsServer.ps1";
+    
+    Update-Preferences;
+    Enable-RemoteDesktop;
 
-    Update-ComputerName -NewName $using:NewSettings.Name; # Update the computer name
+    Update-ComputerName -NewName $using:NewSettings[0].Name; # Update the computer name
 
     # Retrieve the InterfaceIndex of the network adapter that is connected to the network
     $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
@@ -195,6 +204,7 @@ Invoke-Command -Session $TargetSession  -ScriptBlock { # Execute the script on t
 
 
 Remove-PSSession $TargetSession; # Remove the session to the remote server
+
 $SecondaryDomainController = $NewSettings[1].IpAddress; # Set the secondary domain controller to the new IP address
 $TargetSession = New-PSSession -ComputerName $SecondaryDomainController -Credential (Get-Credential -Message "Credentials remote machine" -Username $RemoteUser);
 
@@ -213,10 +223,11 @@ Invoke-Command -Session $TargetSession -ScriptBlock { # Execute the script on th
     . ".\Post-InstallationFunctions_WindowsServer.ps1";
     
     Update-Preferences;
+    Enable-RemoteDesktop;
     Write-Host "Joining domain...";
     Add-Computer -DomainName $using:Domain -Credential (Get-Credential -Message "Domain join" -Username "$($using:SiteName)\$($using:RemoteUser)"); # Add the computer to the domain
     Write-Host "Joining domain complete";
-    Write-Host "Cleaning up scripts..."
+    Write-Host "Cleaning up scripts...";
     #Remove-Item -Path $using:RemotePath -Recurse -Force;
     Write-Host "Cleaning up scripts complete";
     Write-Host "Restarting server...";
@@ -225,12 +236,14 @@ Invoke-Command -Session $TargetSession -ScriptBlock { # Execute the script on th
 
 Remove-PSSession $TargetSession; # Remove the session to the remote server
 
+
+
+
 # ~ MemberServer ==================================================================================================
 #Enable-PSRemoting -Force
 #Enable-NetFirewallRule -DisplayName "*Network Access*"
 #Enable-NetFirewallRule -DisplayGroup "*Remote Event Log*"
 #Enable-NetFirewallRule -DisplayGroup "*Remote File Server Resource Manager Management*"
-
 #Enable-NetFirewallRule -DisplayGroup "Netlogon Service"
 $TargetSession = New-PSSession -ComputerName $MemberServer -Credential (Get-Credential -Message "Credentials remote machine" -Username $RemoteUser); # Create a new session to the remote server
 
@@ -280,13 +293,17 @@ Invoke-Command -Session $TargetSession -ScriptBlock { # Execute the script on th
     Add-Computer -DomainName $using:Domain -Credential (Get-Credential -Message "Domain join" -Username "$($using:SiteName)\$($using:RemoteUser)"); # Add the computer to the domain
     Write-Host "Joining domain complete";
     Write-Host "Cleaning up scripts..."
-    Remove-Item -Path using:$RemotePath -Recurse -Force;
+    #Remove-Item -Path using:$RemotePath -Recurse -Force;
     Write-Host "Cleaning up scripts complete";
     Write-Host "Restarting server...";
     Restart-Computer -Force;
 }
 
 Remove-PSSession $TargetSession; # Remove the session to the remote server
+
+# wait for the server to come back online - example microsoft docs didn't work, remote server was didn't respond
+Start-Sleep -Seconds 400; # Wait for the server to restart by sleeping for 10 minutes
+Write-Host "Server has restarted proceding with script...";
 
 # ~ SecondaryDomainController - Setup ==================================================================================================
 $TargetSession = New-PSSession -ComputerName $SecondaryDomainController -Credential (Get-Credential -Message "Credentials remote machine" -Username $RemoteUser); # Create a new session to the remote server
@@ -315,71 +332,71 @@ Invoke-Command -Session $TargetSession -ScriptBlock { # Execute the script on th
     Restart-Computer -Force;
     exit;
 }
+
+# wait for the server to come back online - example microsoft docs didn't work, remote server was didn't respond
+Start-Sleep -Seconds 400; # Wait for the server to restart by sleeping for 10 minutes
+Write-Host "Server has restarted proceding with script...";
+
 $TargetSession = New-PSSession -ComputerName $SecondaryDomainController -Credential (Get-Credential -Message "Credentials remote machine" -Username $RemoteUser); # Create a new session to the remote server
+
+$DhcpOptions = @{
+    6 = $NewSettings[1].IpAddress,$PrimaryDomainController;
+    15 = $Domain
+}
+
 Invoke-Command -Session $TargetSession -ScriptBlock {
     Set-Location $using:RemotePath
     . ".\Install-Roles.ps1";
     . ".\Windows-Network-RelatedFunctions.ps1";
-    Enable-DHCPCurrentSubnet;
-    
-    Remove-Item -Path $using:RemotePath -Recurse -Force;
+    Add-DhcpServerInDC;
+    #Enable-DHCPCurrentSubnet;
+    Add-DHCPOptions -Options $using:DhcpOptions;
+    #Remove-Item -Path $using:RemotePath -Recurse -Force;
     exit;
 
     # Source hashtables: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_hash_tables?view=powershell-7.3
 }
 Remove-PSSession $TargetSession; # Remove the session to the remote server
 
-$TargetSessionDhcp = New-PSSession -ComputerName $PrimaryDomainController -Credential (Get-Credential -Message "Credentials remote machine" -Username "$($SiteName)\$($RemoteUser)"); # Create a new session to the remote server
 
-Invoke-Command -Session $TargetSessionDhcp -ScriptBlock {
-    $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
-    
-    $Ipconfig = (Get-NetIPAddress | Where-Object { $_.InterfaceIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -notlike '*Loopback*' }); # Get ipconfig of the first network adapter
 
-    Set-Location $using:RemotePath
+$TargetSessionDhcp = New-PSSession -Authentication Kerberos -ComputerName $NewSettings[0].Name -Credential (Get-Credential -Message "Credentials remote machine" -Username "$($SiteName)\$($RemoteUser)"); # Create a new session to the remote server
 
+
+Invoke-command -Session $TargetSessionDhcp -ScriptBlock {
+     Set-Location $using:RemotePath
     . ".\Install-Roles.ps1"; 
     . ".\Windows-Network-RelatedFunctions.ps1";
 
-    $FailoverScope = (Get-DhcpServerv4Failover -ScopeId "$(Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -PrefixLength $Ipconfig.PrefixLength)" -ErrorAction SilentlyContinue);
+    
+    $InterfaceIndex = (Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.InterfaceDescription -notlike 'Microsoft*' -and $_.InterfaceAlias -notlike '*Virtual*'} | Select-Object -ExpandProperty InterfaceIndex); # Get the interface index of the network adapter that is connected to the network
+
+    $Ipconfig = (Get-NetIPAddress | Where-Object { $_.InterfaceIndex -eq $InterfaceIndex -and $_.AddressFamily -eq 'IPv4' -and $_.InterfaceAlias -notlike '*Loopback*' }); # Get ipconfig of the first network adapter
+
+    $FailoverScope = $null -ne (Get-DhcpServerv4Failover -ScopeId "$(Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -PrefixLength $Ipconfig.PrefixLength)" -ErrorAction SilentlyContinue);
     if($FailoverScope)
     {
+        
         # Update DHCP replication
-        Set-DhcpServerv4Failover -InputObject $FailoverScope `
-        -PartnerServer $using:SecondaryDomainController `
-        -Name "DHCP-FAILOVER" `
-        -LoadBalancePercent 60 `
-        -SharedSecret (ConvertTo-SecureString (Read-Host "Sharedsecret" -AsSecureString) -AsPlainText -Force);
+        Remove-DhcpServerv4Failover -Name "DHCP-FAILOVER" `
+     
     }
-    else
-    {
-        # Configure DHCP replication
-        Add-DhcpServerv4Failover -ScopeId "$(Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -PrefixLength $Ipconfig.PrefixLength)" `
-        -PartnerServer $using:SecondaryDomainController `
-        -Name "DHCP-FAILOVER" `
-        -LoadBalancePercent 60 `
-        -SharedSecret (ConvertTo-SecureString (Read-Host "Sharedsecret" -AsSecureString) -AsPlainText -Force);
-
-        Invoke-DhcpServerr4FailoverReplication -Name "DHCP-FAILOVER" -Force;
-    }
-
-    # Get the existing DNS record for the domain name
-    $ExistingRecord = (Get-DnsServerResourceRecord -ZoneName $using:Domain -RRType A -Name "dns*" -ErrorAction SilentlyContinue);
-    if($ExistingRecord)
-    {
-        $ExistingRecord | Remove-DnsServerResourceRecord;
-    }
+   
+    # Configure DHCP replication
+    Add-DhcpServerv4Failover -ComputerName "$($using:NewSettings[0].Name).$($env:USERDNSDOMAIN)" -ScopeId "$(Out-NetworkIpAddress -IpAddress $Ipconfig.IPAddress -PrefixLength $Ipconfig.PrefixLength)" `
+    -PartnerServer $using:NewSettings[1].Name `
+    -Name "DHCP-FAILOVER" `
+    -LoadBalancePercent 60 `
+    -SharedSecret (ConvertTo-SecureString (Read-Host "Sharedsecret" -AsSecureString) -AsPlainText -Force) `
+    -Force;
     
-    # Create a new DNS record with the weighted IP addresses
-    #Add-DnsServerResourceRecord -ZoneName $using:Domain -Name "dns1" -CName -HostNameAlias "$($using:NewSettings[0].Name).$($using:Domain)" -priority 0 -Weight 50;
-    #Add-DnsServerResourceRecord -ZoneName $using:Domain -Name "dns2" -CName -HostNameAlias "$($using:NewSettings[1].Name).$($using:Domain)" -priority 0 -Weight 50;
-    
-    
-
-    # Restart the DHCP and DNS servers
+    #Invoke-DhcpServerr4FailoverReplication -ComputerName "$using:NewSettings[1].Name" -Name "DHCP-FAILOVER" -Force;
     Restart-Service -Name dhcpserver, dns -Force
+    
 }
-
+  
+    
+  
 Remove-PSSession $TargetSessionDhcp; # Remove the session to the remote server
 
 

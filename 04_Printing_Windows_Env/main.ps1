@@ -92,10 +92,10 @@ Invoke-Command -Session $TargetSession -ScriptBlock {
     # # secure a printer (Security-Descriptor) - Script as secondary backdoor with a scheduled task, nonprivileged user has access as system
     # Get-Printer * -full | Select-Object -ExpandProperty PermissionSDDL
     # 
-    # $Acl = Get-Acl "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers\$($Printer.PrinterName)"
-    # $Ar = New-Object System.Security.AccessControl.RegistryAccessRule("Everyone","FullControl","Allow");
-    # 
-    # $Acl.SetAccessRule($Ar);
+    #$Acl = Get-Acl "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers\$($Printer.PrinterName)"
+ 
+    #$Acl.SetAccessRule((New-Object System.Security.AccessControl.RegistryAccessRule("Authenticated users","Print","Allow")));
+    
     # Set-Acl "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Printers\$($Printer.PrinterName)" $Acl
     # Set-Printer -Name $($Printer.PrinterName) -Shared $True
     

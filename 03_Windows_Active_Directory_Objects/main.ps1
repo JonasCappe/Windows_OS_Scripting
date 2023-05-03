@@ -1,3 +1,4 @@
+
 # ~ GLOBAL VARIABLES ====================================================================================================
 
 $Infrastructure = @(
@@ -47,7 +48,7 @@ Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
 
 # ~ Create Shares ==================================================================================================
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process;
-Set-Location "C:\Users\user\Desktop\NewScripts\";
+Set-Location "..\03_Windows_Active_Directory_Objects";
 . ".\Object_Functions.ps1";
 
 Add-Shares -SourceFile ".\SharesDc2.csv" -DestinationServer $Infrastructure[1].IpAddress; # Add shares to DC2

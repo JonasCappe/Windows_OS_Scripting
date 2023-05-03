@@ -351,7 +351,7 @@ function Update-DefaultFirstSiteName
         
         # Remove warning about the DHCP server not being authorized to serve DHCP requests in the subnet
         # function Disable-DhcpWarningFlag
-        Set-ItemProperty –Path registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ServerManager\Roles\12 –Name ConfigurationState –Value 2;
+        Set-ItemProperty -Path registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ServerManager\Roles\12 -Name ConfigurationState -Value 2;
         # Function to create a DHCP scope for the current subnet
         if (Get-DhcpServerv4Scope | Where-Object { $_.Name -eq "intranet" -and $_.StartRange -eq "192.168.1.1" -and $_.EndRange -eq "192.168.1.254" -and $_.SubnetMask -eq "255.255.255.0" } -ErrorAction SilentlyContinue)
         {

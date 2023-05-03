@@ -6,7 +6,8 @@ $MemberServer = "192.168.1.4"; # Set the member server
 
 
 # Paths to the scripts
-$LocalScripts = '..\02_Install_Roles\*';
+
+$LocalScripts = '..\02_Install-Roles\*';
 $RemotePath = "C:\temp"; # Remote path
 
 # Credentials and sessions
@@ -17,9 +18,11 @@ $SecondaryDomainControllerSession = New-PSSession -ComputerName $SecondaryDomain
 $MemberServerSession = New-PSSession -ComputerName $MemberServer -Credential $Credential; # Create a new session to the member server
 
 # Copy install role script, for remote execution
-Copy-Item -ToSession $PrimaryDomainControllerSession -Path $LocalScripts -Destination $RemotePath; # Copy script to Primary Domain Controller
-Copy-Item -ToSession $SecondaryDomainControllerSession -Path $LocalScripts -Destination $RemotePath; # Copy script to Secondary Domain Controller
-Copy-Item -ToSession $MemberServerSession -Path $LocalScripts -Destination $RemotePath; # Copy script to Fileserver
+Copy-Item -ToSession $PrimaryDomainControllerSession -Path $LocalScripts -Destination $RemotePath -Force; # Copy script to Primary Domain Controller
+Copy-Item -ToSession $SecondaryDomainControllerSession -Path $LocalScripts -Destination $RemotePath -Force; # Copy script to Secondary Domain Controller
+Copy-Item -ToSession $MemberServerSession -Path $LocalScripts -Destination $RemotePath -Force; # Copy script to Fileserver
+
+
 
 # ~  Install DFS Namespaces and Replication =======================================================================================
 Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
@@ -48,17 +51,17 @@ $NamespaceDetails = @{
     LocalPath = "C:\DFSRoots\CompanyInfo"
     Links = @(
         @{
-            targetName = "win03-ms"
+            targetName = "win13-ms"
             LinkFolder = "ABC$"
             LocalPath = "C:\ABC$"
         },
         @{
-            targetName = "win03-ms"
+            targetName = "win13-ms"
             LinkFolder = "Recipes"
             LocalPath = "C:\Recipes"
         },
         @{
-            targetName = "win03-dc2"
+            targetName = "win13-dc2"
             LinkFolder = "Menus"
             LocalPath = "C:\Menus"
         }
@@ -105,12 +108,12 @@ Invoke-Command -Session $PrimaryDomainControllerSession -ScriptBlock {
 
 # ~ Distributed File System Replication (DFSR) =======================================================================================
 $ReplicationGroupDetails = @{
-    Name = "Menus";
+    Name = "AllMenus";
     Domain = "intranet.mct.be"
     FolderName = "Menus";
     Members = @(
-        "win03-dc2",
-        "win03-ms"
+        "win13-dc2",
+        "win13-ms"
     );
     ContentPath = "C:\Menus";
        
@@ -166,3 +169,5 @@ Invoke-Command -ComputerName "win13-dc1" -Credential $Credential -Authentication
     }
 }
 # .\Undo_DFSR_Changes.ps1 -Session $PrimaryDomainControllerSession -GroupName $using:ReplicationGroupDetails.Name;
+
+
